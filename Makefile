@@ -32,7 +32,7 @@ setup:
 build test e2e demo:
 	$(NPM) run $@
 
-load skew:
+skew load:
 	$(NPM) run $@ $(if $(strip $(ARGS)),-- $(ARGS))
 
 # Each verification owns its project and returns the foreground check's status.
