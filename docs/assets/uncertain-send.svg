@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="544" viewBox="0 0 700 544" role="img" aria-labelledby="title description">
+  <title id="title">Lost acknowledgement</title>
+  <desc id="description">The worker claims the pricing-link action. In this example the provider accepts the link, but its acknowledgement is lost. The run stays on hold without an automatic resend. An operator confirms acceptance with the original receipt, and the run completes with one accepted link.</desc>
+  <rect width="700" height="544" fill="#F8FAFC"/>
+  <rect x="1" y="1" width="698" height="542" rx="16" fill="none" stroke="#C7D6E0" stroke-width="2"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#17314A">
+    <path d="M1 63h71l23-23V1M1 85h698" fill="none" stroke="#C7D6E0" stroke-width="2"/>
+    <text x="25" y="45" font-size="23" font-weight="700">stm</text>
+    <text x="118" y="57" font-size="36" font-weight="700">Lost acknowledgement</text>
+
+    <g id="leased">
+      <rect x="48" y="108" width="604" height="82" rx="14" fill="#E6F0F7" stroke="#456C87" stroke-width="2"/>
+      <text x="122" y="144" font-size="30" font-weight="700">Leased</text>
+      <text x="122" y="173" font-size="25">Worker claims the pricing-link action</text>
+    </g>
+    <g fill="none" stroke="#475569" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path id="to-uncertain" d="M84 191v78m-8-10 8 10 8-10"/>
+      <path id="to-sent" d="M84 353v78m-8-10 8 10 8-10"/>
+    </g>
+    <text x="122" y="222" font-size="25">Provider accepts the link</text>
+    <text x="122" y="250" font-size="25">Its acknowledgement is lost</text>
+    <g id="uncertain">
+      <rect x="48" y="270" width="604" height="82" rx="14" fill="#FDF1D5" stroke="#9A651D" stroke-width="2"/>
+      <text x="122" y="306" font-size="30" font-weight="700">Uncertain</text>
+      <text x="122" y="335" font-size="25">Run on hold. No automatic resend.</text>
+    </g>
+    <text x="122" y="384" font-size="25">Operator confirms acceptance</text>
+    <text x="122" y="412" font-size="25">with the original receipt</text>
+    <g id="sent">
+      <rect x="48" y="432" width="604" height="82" rx="14" fill="#DDF3EA" stroke="#14765B" stroke-width="2"/>
+      <text x="122" y="468" font-size="30" font-weight="700">Sent</text>
+      <text x="122" y="497" font-size="25">Run completed. One accepted link.</text>
+    </g>
+  </g>
+</svg>

@@ -7,39 +7,54 @@ When someone comments **pricing** on an Instagram post, the automation replies p
 
 ![A pricing comment gets a public reply. The automation asks for an email by DM and sends the pricing link after a valid reply within 24 hours.](docs/assets/pricing-workflow.webp)
 
-PostgreSQL records each event, run, and outgoing action. A worker restart preserves the wait and the original link. Duplicate events do not create a second logical send. An uncertain send stays visible for reconciliation.
-
 [Architecture and UML](docs/diagrams.md) · [Production sizing and storage](docs/storage-and-sizing.md) · [Blotato product context](docs/product-context.md)
+
+## Follow one conversation
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/pricing-sequence.svg">
+  <img src="docs/assets/pricing-sequence.gif" alt="A pricing comment triggers a public reply and an email prompt. The run waits in PostgreSQL across a worker restart. A qualifying reply triggers the pricing link, and the run completes when the provider accepts it.">
+</picture>
+
+The worker can stop while the commenter decides whether to reply. PostgreSQL keeps the waiting run and its original pricing link. A duplicate event cannot create a second link send.
+
+Customers can also enable a history for each commenter on a connected account. It pairs recent comment and DM excerpts with the outcomes of the corresponding sends. A returning commenter can receive a different email prompt and still has to reply before the link goes out. [Participant context and retention](docs/participant-context.md)
+
+<details>
+<summary>Watch what happens when a send loses its acknowledgement</summary>
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/uncertain-send.svg">
+  <img src="docs/assets/uncertain-send.gif" alt="The provider accepts the link DM, but its acknowledgement is lost. The worker holds the action. An operator verifies the receipt, and the run completes with one send.">
+</picture>
+
+In this example the operator finds the original receipt. To retry, the operator must establish that the first request had no effect, the old sender can no longer send, and the dispatch window is still open. [Recovery procedure](docs/delivery-recovery.md)
+
+</details>
 
 ## Verify in Docker
 
-From the repository root with Docker Compose v2, run the same verification job used in CI under an isolated project name.
+From the repository root with Make and Docker Compose v2, run the same verification as CI.
 
 ```sh
-docker compose -p comment-verify up --build --abort-on-container-exit --exit-code-from verify
+make verify
 ```
 
-The job runs the test suite, prints a conversation trace, and checks a small concurrent workload against PostgreSQL 17. The HTTP test restarts the API and worker during the wait and verifies that concurrent replies produce one recorded link DM.
-
-Remove the disposable verification environment when finished.
-
-```sh
-docker compose -p comment-verify down --volumes
-```
+The command creates a disposable PostgreSQL 17 environment, runs the tests and concurrent workloads, and removes the environment when it finishes. The HTTP test restarts the API and worker during the wait and checks that two concurrent replies produce one recorded link DM.
 
 ## Try the HTTP API
 
 Start the API, delivery worker, PostgreSQL, and recording provider. The sandbox uses synthetic credentials and events.
 
 ```sh
-docker compose -p comment-demo --profile sandbox up --build -d api worker
-curl --fail --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1:3030/healthz
+make sandbox-up
+make sandbox-demo
 ```
 
 The walkthrough publishes the pricing rule, submits a comment and an email, then checks the three receipts at the provider. It uses the sandbox’s built-in account and credentials. [Run the pricing flow](docs/api.md#run-the-pricing-flow)
 
 ```sh
-docker compose -p comment-demo --profile sandbox down --volumes
+make sandbox-down
 ```
 
 ## Run individual checks
@@ -62,4 +77,8 @@ These checks use synthetic events and simulated provider acceptance. Live Instag
 | --- | --- |
 | [Requirements and acceptance](docs/requirements.md) | The pricing rules, edge cases, and tests that exercise them. |
 | [Architecture](docs/architecture.md) | [UML diagrams](docs/diagrams.md), [data model](docs/data.md), [module boundaries](docs/modularity.md), and [send recovery](docs/delivery-recovery.md). |
-| [Verification harness](docs/harness.md) | [Agent workflow](docs/agent-workflow.md), [AI engineering patterns](docs/ai-engineering.md), and [release evidence](docs/release.md). |
+| [Verification and release](docs/release.md) | [Measured workloads](docs/capacity.md) and [latest release](https://github.com/ByAxe/blotato-comment-automations/releases/latest). |
+
+## For contributors
+
+Run `make help` to see the available commands. The contributor guide maps common changes to the relevant skills and checks. A developer can keep personal preferences and a handoff in a local profile. [Contributor guide](AGENTS.md) · [Skills and evals](evals/README.md) · [Developer profiles](docs/developer-context.md)

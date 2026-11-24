@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="842" viewBox="0 0 700 842"
+     role="img" aria-labelledby="title description">
+  <title id="title">Pricing automation sequence</title>
+  <desc id="description">A commenter posts pricing. The provider forwards the event and the automation matches the enabled rule. The provider accepts the public reply and then the email prompt. PostgreSQL preserves the waiting run across a restart. A valid email from the same commenter and account within 24 hours leads to a pricing link DM. The run completes after provider acceptance.</desc>
+  <defs>
+    <style>
+      text { font-family: Arial, sans-serif; fill: #17314A; }
+      .title { font-size: 25px; font-weight: bold; }
+      .operator { font-size: 17px; font-weight: bold; fill: #365975; }
+      .participant { fill: #E6F0F7; stroke: #A9BDCC; }
+      .participant-label { font-size: 20px; font-weight: bold; text-anchor: middle; }
+      .lifeline { stroke: #A0B2BF; stroke-width: 1.25; stroke-dasharray: 5 5; }
+      .label { font-size: 20px; text-anchor: middle; }
+      .detail { font-size: 20px; fill: #30475B; }
+      .note-heading { font-size: 20px; font-weight: bold; }
+      .arrow { fill: none; stroke: #475569; stroke-width: 1.6; }
+      .tip { fill: #475569; }
+      .receipt { stroke-dasharray: 5 4; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="698" height="840" rx="14" fill="#F8FAFC" stroke="#C4D2DC"/>
+  <path d="M16 15H355V48L339 64H16Z" fill="#E6F0F7" stroke="#A9BDCC"/>
+  <text class="operator" x="32" y="45">sd</text>
+  <text class="title" x="62" y="46">Pricing automation</text>
+
+  <!-- The GIF highlights each phase band and traces the message shafts in its matching group. -->
+  <g>
+    <rect id="match-band" fill="none" x="17" y="151" width="666" height="108" rx="8"/>
+    <rect id="reply-band" fill="none" x="17" y="263" width="666" height="89" rx="8"/>
+    <rect id="prompt-band" fill="none" x="17" y="356" width="666" height="117" rx="8"/>
+    <rect id="wait-band" fill="none" x="17" y="477" width="666" height="109" rx="8"/>
+    <rect id="email-band" fill="none" x="17" y="590" width="666" height="122" rx="8"/>
+    <rect id="link-band" fill="none" x="17" y="716" width="666" height="109" rx="8"/>
+  </g>
+
+  <g class="lifeline">
+    <path d="M97 141V823 M263 141V823 M437 141V823 M605 141V823"/>
+  </g>
+  <rect x="16" y="15" width="668" height="812" fill="none" stroke="#A9BDCC"/>
+
+  <g fill="none" stroke="#365975" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="97" cy="82" r="6"/>
+    <path d="M97 88V105M86 95H108M97 105L89 115M97 105L105 115"/>
+  </g>
+  <text class="participant-label" x="97" y="136">Commenter</text>
+  <rect class="participant" x="184" y="89" width="158" height="53" rx="4"/>
+  <rect class="participant" x="358" y="89" width="158" height="53" rx="4"/>
+  <rect class="participant" x="526" y="89" width="158" height="53" rx="4"/>
+  <text class="participant-label" x="263" y="122">Social provider</text>
+  <text class="participant-label" x="437" y="122">Automation</text>
+  <text class="participant-label" x="605" y="122">PostgreSQL</text>
+
+  <g id="match" class="phase">
+    <text class="label" x="180" y="169">Comment “pricing”</text>
+    <path class="arrow" d="M97 179H263"/>
+    <path class="arrow" d="M255 175L263 179L255 183"/>
+    <text class="label" x="350" y="203">Comment event</text>
+    <path class="arrow" d="M263 213H437"/>
+    <path class="arrow" d="M429 209L437 213L429 217"/>
+    <text class="label" x="539" y="234">Match pricing rule</text>
+    <path class="arrow" d="M437 226H458V247H437"/>
+    <path class="tip" d="M437 247L447 242V252Z"/>
+  </g>
+
+  <g id="reply" class="phase">
+    <text class="label" x="350" y="283">Public reply</text>
+    <text class="label detail" x="350" y="302">“Sent you a DM!”</text>
+    <path class="arrow" d="M437 312H263"/>
+    <path class="tip" d="M263 312L273 307V317Z"/>
+    <text class="label detail" x="350" y="334">Reply accepted</text>
+    <path class="arrow receipt" d="M263 344H437"/>
+    <path class="arrow" d="M429 340L437 344L429 348"/>
+  </g>
+
+  <g id="prompt" class="phase">
+    <text class="label" x="521" y="377">Open 24h window</text>
+    <path class="arrow" d="M437 387H605"/>
+    <path class="tip" d="M605 387L595 382V392Z"/>
+    <text class="label" x="350" y="414">DM email prompt</text>
+    <path class="arrow" d="M437 424H263"/>
+    <path class="tip" d="M263 424L273 419V429Z"/>
+    <text class="label detail" x="350" y="450">Prompt accepted</text>
+    <path class="arrow receipt" d="M263 460H437"/>
+    <path class="arrow" d="M429 456L437 460L429 464"/>
+  </g>
+
+  <g id="wait" class="phase">
+    <text class="label" x="521" y="498">Mark run waiting</text>
+    <path class="arrow" d="M437 508H605"/>
+    <path class="tip" d="M605 508L595 503V513Z"/>
+    <path d="M395 523H651L665 537V576H395Z" fill="#EFF7F2" stroke="#7BA99A"/>
+    <path d="M651 523V537H665" fill="none" stroke="#7BA99A"/>
+    <text class="note-heading" x="409" y="546">API and worker restart</text>
+    <text class="detail" x="409" y="568">Wait and original link persist</text>
+  </g>
+
+  <g id="email" class="phase">
+    <text class="label" x="180" y="612">DM with email</text>
+    <path class="arrow" d="M97 622H263"/>
+    <path class="arrow" d="M255 618L263 622L255 626"/>
+    <text class="label" x="350" y="649">Incoming DM</text>
+    <path class="arrow" d="M263 659H437"/>
+    <path class="arrow" d="M429 655L437 659L429 663"/>
+    <path d="M53 668H347L360 681V707H53Z" fill="#EFF7F2" stroke="#7BA99A"/>
+    <path d="M347 668V681H360" fill="none" stroke="#7BA99A"/>
+    <path d="M360 695H437" fill="none" stroke="#7BA99A" stroke-dasharray="4 3"/>
+    <text class="detail" x="64" y="685">Same commenter and account</text>
+    <text class="detail" x="64" y="703">Valid email within 24h</text>
+    <text class="label" x="521" y="687">Capture email</text>
+    <path class="arrow" d="M437 697H605"/>
+    <path class="tip" d="M605 697L595 692V702Z"/>
+  </g>
+
+  <g id="link" class="phase">
+    <text class="label" x="350" y="737">DM pricing link</text>
+    <path class="arrow" d="M437 747H263"/>
+    <path class="tip" d="M263 747L273 742V752Z"/>
+    <text class="label detail" x="350" y="772">Link accepted</text>
+    <path class="arrow receipt" d="M263 782H437"/>
+    <path class="arrow" d="M429 778L437 782L429 786"/>
+    <text class="label" x="521" y="807">Complete run</text>
+    <path class="arrow" d="M437 817H605"/>
+    <path class="tip" d="M605 817L595 812V822Z"/>
+  </g>
+</svg>
