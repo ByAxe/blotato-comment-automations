@@ -36,14 +36,17 @@ else Valid external event
     opt Waiting run is due
       api -> db : Expire the run
     end
-    alt Matching comment, no active run
-      api -> db : Pin version, create run\nand enqueue public reply
-    else Matching comment, active run
-      api -> api : Outcome busy with run ID
+    alt Inbound comment
+      api -> db : Match enabled rule by keyword\nand optional post ID
+      alt Match, no active run
+        api -> db : Pin version, create run\nand enqueue public reply
+      else Match, active run
+        api -> api : Outcome busy with run ID
+      else No match
+        api -> api : Outcome ignored
+      end
     else Inbound message
       api -> db : Evaluate reply window\nBuffer or capture valid email
-    else Comment does not match
-      api -> api : Outcome ignored
     end
   else Duplicate or future-dated event
     api -> api : Outcome duplicate or ignored

@@ -47,3 +47,5 @@ Each role receives the [product requirements](../agents/problem.md), its [role i
 The parent process starts each CLI in a fresh temporary directory with a read-only sandbox. It passes source through standard input, ignores user configuration, and disables shell execution, connected apps, plugins, browser use, web search and nested agents. The parent saves outputs in the selected directory. Application changes, database checks and GitHub publication belong to the separate implementation workflow.
 
 A receipt records which inputs produced a handoff. The technical reviewer can cite a SQL constraint or a test definition from the snapshot. A passing test claim needs separate execution evidence. The offline transport tests use a mock CLI to exercise a failed role, reuse, corruption detection, context isolation and the concurrency bound.
+
+A live eight-role run against source revision `ebfc952` reached `design.md`. All eight handoff digests matched their files. Two calls used Sol and six used Astra. This checks the CLI path and handoffs for that revision. The database and HTTP checks run separately.

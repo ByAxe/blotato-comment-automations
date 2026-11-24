@@ -9,6 +9,8 @@ When someone comments **pricing** on an Instagram post, the automation replies p
 
 PostgreSQL records each event, run, and outgoing action. A worker restart preserves the wait and the original link. Duplicate events do not create a second logical send. An uncertain send stays visible for reconciliation.
 
+[Architecture and UML](docs/diagrams.md) · [Production sizing and storage](docs/storage-and-sizing.md) · [Blotato product context](docs/product-context.md)
+
 ## Verify in Docker
 
 From the repository root with Docker Compose v2, run the same verification job used in CI under an isolated project name.
@@ -50,6 +52,7 @@ Use Node.js 22–24 and make PostgreSQL's `initdb` and `pg_ctl` available on you
 | `npm run e2e` | The API and worker resume a waiting conversation across restarts with an HTTP recording provider. |
 | `npm run demo` | A two-process trace shows the public reply, email prompt, durable wait, and one link after a duplicated email reply. |
 | `npm run load` | The default workload checks 400 completed conversations and 1,200 accepted simulated sends under concurrent intake and delivery. [Host and timings](docs/capacity.md) |
+| `npm run skew` | A quiet account receives its turn while another has a backlog, then makes progress during that account’s provider cooldown. |
 
 These checks use synthetic events and simulated provider acceptance. Live Instagram delivery requires an authorized provider integration and separate verification. The load timings describe the test host and scenario. [Provider integration](docs/integration.md)
 
@@ -58,5 +61,5 @@ These checks use synthetic events and simulated provider acceptance. Live Instag
 | Start with | Go deeper |
 | --- | --- |
 | [Requirements and acceptance](docs/requirements.md) | The pricing rules, edge cases, and tests that exercise them. |
-| [Architecture](docs/architecture.md) | [System diagrams](docs/diagrams.md), [data model](docs/data.md), and [send recovery](docs/delivery-recovery.md). |
-| [Verification harness](docs/harness.md) | [Agent workflow](docs/agent-workflow.md), [capacity and recovery](docs/capacity.md), and [release evidence](docs/release.md). |
+| [Architecture](docs/architecture.md) | [UML diagrams](docs/diagrams.md), [data model](docs/data.md), [module boundaries](docs/modularity.md), and [send recovery](docs/delivery-recovery.md). |
+| [Verification harness](docs/harness.md) | [Agent workflow](docs/agent-workflow.md), [AI engineering patterns](docs/ai-engineering.md), and [release evidence](docs/release.md). |

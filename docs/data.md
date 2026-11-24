@@ -4,9 +4,9 @@ A comment can have several webhook deliveries. A run can have several outbound a
 
 ## Operational records
 
-[![UML class diagram of the workflow tables. Each run pins one version, can reference up to three actions, and can have one buffered email and one lead. Each action can have multiple reconciliation decisions, one per attempt.](diagrams/data-model.svg)](diagrams/data-model.svg)
+[![UML class diagram of the workflow tables. Each run pins one version, can reference up to three actions, and can have one buffered email and one lead. Each action can have multiple reconciliation decisions, one per attempt. An account can have one delivery lane and one cooldown.](diagrams/data-model.svg)](diagrams/data-model.svg)
 
-The UML class diagram shows selected columns and the multiplicities allowed by the schema. A version holds the customer’s published settings. Its revision number is local to the account. Each run pins that version and the original comment. The inbox records inbound identities before the handler decides whether an event should start or advance a run. The deduplication keys include the tenant and connected account because two accounts can use the same external identifier.
+The UML class diagram shows selected columns and the multiplicities allowed by the schema. A version holds the customer’s published settings. Its revision number is local to the account. An optional source post ID narrows the rule to that post. Each run pins that version and the original comment. The inbox records inbound identities and any supplied comment post ID before the handler decides whether an event should start or advance a run. The deduplication keys include the tenant and connected account because two accounts can use the same external identifier.
 
 A single transaction records the run and its first outbox action. Each later action has one row per run and action kind. Retries update this row. While the prompt outcome is pending, a qualified early response can occupy a temporary slot for that run. Acceptance of a qualified address creates the lead and the link action together. The report uses that action as evidence of capture, so removing the contact address alone preserves the count. [Operational schema](../db/001_core.sql)
 
@@ -16,10 +16,11 @@ A single transaction records the run and its first outbox action. Each later act
 | `inbox` | Unique on `(tenant_id, account_id, event_id)` and separately on `(tenant_id, account_id, kind, object_id)`. |
 | `runs` | One run per `(tenant_id, account_id, comment_id)`. A partial unique index allows one active run per `(tenant_id, account_id, participant_id)`. |
 | `buffered_emails`, `leads` | `run_id` is both the primary key and a foreign key to the owning run. |
-| `outbox` | Unique on `(run_id, kind)`. The three allowed kinds bound the number of actions. A leased row requires a token and deadline. A sent row requires a receipt and timestamp. |
+| `outbox` | Unique on `(run_id, kind)`. A trigger derives the tenant and account from the run for the lane head lookup. The three allowed kinds bound the number of actions. A leased row requires a token and deadline. A sent row requires a receipt and timestamp. |
+| `delivery_lanes` | One lane per `(tenant_id, account_id)`. Outbox triggers update `pending_count` in the same transaction as membership changes. A claim advances `turn` to rotate among eligible lanes. |
 | `delivery_cooldowns`, `delivery_reconciliations` | One cooldown per `(tenant_id, account_id)` and one decision per `(action_id, attempt)`. |
 
-[Editable PlantUML source](diagrams/data-model.puml) · [Delivery schema](../db/002_delivery.sql)
+[Editable PlantUML source](diagrams/data-model.puml) · [Delivery schema](../db/002_delivery.sql) · [Scheduling lanes](../db/004_fair_delivery.sql) · [Post scope](../db/005_post_scope.sql)
 
 ## The conversion report
 

@@ -24,12 +24,13 @@ participant "PostgreSQL" as db
 participant "Worker" as worker
 participant "Social connector" as gateway
 
-worker -> db : Claim public reply\nCommit
+worker -> db : Claim public reply\nRotate lane and commit
 worker -> gateway : Send public reply
 gateway -->> worker : Acceptance receipt
 worker -> db : Fence lease and settle\nEnqueue prompt\nCommit
 
-worker -> db : Claim prompt\nStart 24-hour wait\nCommit
+worker -> db : Claim prompt\nRotate lane and commit
+worker -> db : Fence lease\nStart 24-hour wait\nCommit
 worker -> gateway : Send email prompt
 opt Early DM before prompt settlement
   gateway -> api : POST inbound DM
@@ -45,7 +46,7 @@ opt No buffered email and the wait is open
   api -->> gateway : accepted
 end
 
-worker -> db : Claim link\nCommit
+worker -> db : Claim link\nRotate lane and commit
 worker -> gateway : Send pinned URL
 gateway -->> worker : Acceptance receipt
 worker -> db : Fence lease and settle\nComplete run\nCommit

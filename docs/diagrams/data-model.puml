@@ -25,6 +25,7 @@ class automations {
 class automation_versions {
   id : uuid {id}
   revision : integer
+  post_id : text [0..1]
   link_url : text
 }
 
@@ -34,6 +35,7 @@ class inbox {
   event_id : text
   kind : text
   object_id : text
+  post_id : text [0..1]
 }
 
 class runs {
@@ -56,10 +58,17 @@ class leads {
 
 class outbox {
   id : uuid {id}
+  tenant_id : text
+  account_id : text
   kind : text
   status : text
   send_before : timestamptz
   attempts : integer
+}
+
+class delivery_lanes {
+  pending_count : bigint
+  turn : bigint
 }
 
 class delivery_cooldowns {
@@ -75,6 +84,7 @@ class delivery_reconciliations {
 inbox -[hidden]right- automations
 automations "1" -down- "0..*" automation_versions : published versions
 automations "0..1" -down- "0..1" automation_versions : current version
+automations "1" -up- "0..1" delivery_lanes : scheduling lane
 automations "1" -right- "0..1" delivery_cooldowns : cooldown
 automation_versions "1" -down- "0..*" runs : pinned version
 runs "1" -left- "0..1" buffered_emails : buffered address

@@ -1,8 +1,8 @@
 # Workflow architecture
 
-A customer publishes a keyword, a public reply, an email prompt and a destination URL for a connected Instagram account. A matching comment starts one conversation. The service can stop for hours between the prompt and the reply. PostgreSQL holds the exact definition version, the step the conversation reached and the evidence needed to decide what may happen next.
+A customer publishes a keyword, a public reply, an email prompt and a destination URL for a connected Instagram account. The rule can cover the whole account or one post. A matching comment starts one conversation. The service can stop for hours between the prompt and the reply. PostgreSQL holds the exact definition version, the step the conversation reached and the evidence needed to decide what may happen next.
 
-[Runtime and state diagrams](diagrams.md) · [Product requirements](requirements.md) · [Tables and reporting grains](data.md)
+[Runtime and state diagrams](diagrams.md) · [Product requirements](requirements.md) · [Tables and reporting grains](data.md) · [Production sizing and storage choice](storage-and-sizing.md) · [Modularity review](modularity.md)
 
 ## Where a transaction ends
 
@@ -10,7 +10,7 @@ A customer publishes a keyword, a public reply, an email prompt and a destinatio
 | --- | --- | --- |
 | Publish | Lock the account's rule, append a version, update its current pointer. | New runs see the new text and URL. A run already in progress uses its pinned version. |
 | Receive a comment | Lock the conversation, deduplicate the delivery and social object, match the enabled definition, insert a run and its public-reply intent. | The ingress API acknowledges the event. Redelivery finds the same identity even if the original HTTP response was lost. |
-| Send an action | Claim one due row with a time-limited token and commit. Call the adapter outside the transaction. In a new transaction, verify the token and settle the result together with the next state and intent. | Other workers can claim independent work during the HTTP call. Only the current lease can advance the run. |
+| Send an action | Lock the next eligible account queue, claim one due action, rotate the account's turn and commit. A prompt opens its response window in a second, fenced transaction. Call the adapter outside the transaction. In a new transaction, verify the token and settle the result together with the next state and intent. | Other workers can claim independent work during the HTTP call. Only the current lease can advance the run. |
 | Receive an email | Lock the conversation, validate and consume at most one qualifying response, save the lead, set the next state and enqueue the link together. | A second response cannot create another link intent. |
 | Resolve an unknown send | Lock the action in the owning tenant, check its attempt number, record the operator and evidence, then apply the decision. | A stale resolution cannot authorize a later attempt. |
 

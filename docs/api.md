@@ -32,7 +32,7 @@ docker compose -p comment-demo --profile sandbox down --volumes
 | `npm run api` | `DATABASE_URL`, `DEMO_TENANT_ID`, `DEMO_ACCOUNT_ID`, `DEMO_CONTROL_TOKEN`, `DEMO_ADAPTER_TOKEN` | `HOST` defaults to `127.0.0.1`. `PORT` defaults to `3000`. Use `PORT=0` to bind an ephemeral port. |
 | `npm run worker` | `DATABASE_URL`, `PROVIDER_URL`, `PROVIDER_TOKEN` | `WORKER_POLL_MS` defaults to `1000` and accepts `10` through `60000`. |
 
-Apply the migrations to a disposable PostgreSQL database before starting the processes. The server prints a JSON event named `listening` with the bound port. The worker prints `worker_ready` when it can see the workflow and delivery schema. On `SIGINT` or `SIGTERM`, the API stops taking requests and drains active requests. The worker lets its current bounded iteration settle and exits.
+Apply the migrations to a disposable PostgreSQL database before starting the processes. Startup requires the workflow and delivery schema, including the fair delivery lanes from `004_fair_delivery.sql` and the post scope columns from `005_post_scope.sql`. The server then prints a JSON event named `listening` with the bound port, and the worker prints `worker_ready`. On `SIGINT` or `SIGTERM`, the API stops taking requests and drains active requests. The worker lets its current bounded iteration settle and exits.
 
 ## Authentication and scope
 
@@ -42,7 +42,7 @@ Use `Content-Type: application/json` on requests with a body. A JSON body is lim
 
 ## Routes
 
-`GET /healthz` returns `200 {"ready":true}` when PostgreSQL and the workflow and delivery schema are reachable, or `503 {"ready":false}` otherwise.
+`GET /healthz` returns `200 {"ready":true}` when PostgreSQL is reachable and the required workflow, delivery, and post scope schema is visible to the API connection. It returns `503 {"ready":false}` when the connection or schema check fails.
 
 `POST /v1/tenants/{tenantId}/automations` accepts a control token and publishes a new configuration version.
 

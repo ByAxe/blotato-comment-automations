@@ -1,0 +1,185 @@
+{
+  "revision": "83ef8478f74351ff388f5122375e1324d1197b2b",
+  "date": "2026-11-24",
+  "environment": "Apple M3 Pro, local PostgreSQL, synthetic provider",
+  "load": {
+    "environment": {
+      "node": "v22.22.0",
+      "postgres": "14.25 (Homebrew)",
+      "platform": "darwin",
+      "arch": "arm64",
+      "logicalCpus": 11
+    },
+    "scenario": {
+      "tenants": 50,
+      "participantsPerTenant": 100,
+      "ingressWorkers": 8,
+      "deliveryWorkers": 4,
+      "poolMax": 8,
+      "conversations": 5000,
+      "deliveryAttemptsPerEvent": 3
+    },
+    "counts": {
+      "completed": 5000,
+      "inbox": 10000,
+      "leads": 5000,
+      "buffered": 0,
+      "outbox": 15000,
+      "simulatedSends": 15000
+    },
+    "commentIngress": {
+      "count": 15000,
+      "elapsedMs": 918.34,
+      "perSecond": 16333.86,
+      "callMs": {
+        "p50": 0.44,
+        "p95": 0.73,
+        "p99": 1.31
+      },
+      "unique": 5000,
+      "duplicate": 10000
+    },
+    "repliesAndPrompts": {
+      "count": 10000,
+      "elapsedMs": 3202.86,
+      "perSecond": 3122.21,
+      "callMs": {
+        "p50": 1.24,
+        "p95": 1.71,
+        "p99": 2.52
+      },
+      "workerSends": [
+        2498,
+        2498,
+        2501,
+        2503
+      ],
+      "idlePolls": 3
+    },
+    "responseIngress": {
+      "count": 15000,
+      "elapsedMs": 859.62,
+      "perSecond": 17449.63,
+      "callMs": {
+        "p50": 0.44,
+        "p95": 0.59,
+        "p99": 0.74
+      },
+      "unique": 5000,
+      "duplicate": 10000
+    },
+    "links": {
+      "count": 5000,
+      "elapsedMs": 1132.84,
+      "perSecond": 4413.69,
+      "callMs": {
+        "p50": 0.87,
+        "p95": 1.11,
+        "p99": 1.3
+      },
+      "workerSends": [
+        1249,
+        1250,
+        1250,
+        1251
+      ],
+      "idlePolls": 3
+    },
+    "enqueueToFirstAttemptMs": {
+      "comment_reply": {
+        "p50": 1109.85,
+        "p95": 1913.95,
+        "p99": 2116.7
+      },
+      "email_prompt": {
+        "p50": 1703.01,
+        "p95": 1774.39,
+        "p99": 1786.04
+      },
+      "link_dm": {
+        "p50": 1054.58,
+        "p95": 1535.42,
+        "p99": 1669.05
+      }
+    },
+    "relationSizes": [
+      {
+        "relation": "inbox",
+        "table_bytes": 1400832,
+        "index_bytes": 2539520,
+        "total_bytes": 3940352
+      },
+      {
+        "relation": "runs",
+        "table_bytes": 1318912,
+        "index_bytes": 1974272,
+        "total_bytes": 3293184
+      },
+      {
+        "relation": "outbox",
+        "table_bytes": 3883008,
+        "index_bytes": 4390912,
+        "total_bytes": 8273920
+      },
+      {
+        "relation": "leads",
+        "table_bytes": 458752,
+        "index_bytes": 212992,
+        "total_bytes": 671744
+      }
+    ]
+  },
+  "skew": {
+    "environment": {
+      "node": "v22.22.0",
+      "postgres": "14.25 (Homebrew)",
+      "platform": "darwin",
+      "arch": "arm64",
+      "logicalCpus": 11
+    },
+    "scenario": {
+      "hotComments": 240,
+      "adapterMs": 5,
+      "workers": 4,
+      "tenants": 3,
+      "poolMax": 8,
+      "rateLimitMs": 3000
+    },
+    "fairness": {
+      "hotSendsBeforeReply": 1,
+      "hotSendsBeforePrompt": 4,
+      "maxAllowedHotSendsBeforePrompt": 16,
+      "hotPendingAfterPrompt": 216,
+      "idlePolls": 2,
+      "replyQueueMs": 1.27,
+      "promptQueueMs": 1.4,
+      "runToPromptSettledMs": 14.12
+    },
+    "isolation": {
+      "hotArrivalsDuringCooldown": 24,
+      "hotPendingAtCooldownCheck": 240,
+      "hotAttemptsDuringCheck": 0,
+      "quietActionsSettledBeforeCooldownEnded": 2,
+      "idlePolls": 16,
+      "replyQueueMs": 0.87,
+      "promptQueueMs": 0.42,
+      "runToPromptSettledMs": 12.36
+    },
+    "recovery": {
+      "sends": 473,
+      "elapsedMs": 879.21,
+      "sendsPerSecond": 537.98,
+      "idlePolls": 164
+    },
+    "counts": {
+      "completed": 242,
+      "leads": 242,
+      "inbox": 484,
+      "outbox": 726,
+      "attempts": 727,
+      "effects_ok": true,
+      "simulatedSends": 726,
+      "knownUnsentRetries": 1
+    }
+  }
+}

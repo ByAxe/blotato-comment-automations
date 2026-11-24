@@ -1,23 +1,6 @@
 # Capacity, scaling, and recovery
 
-## Initial planning envelope
-
-These are hypothetical sizing inputs. Replace them with account traffic, reply rates, adapter quotas, and measured service times before choosing production capacity. Assume 100 active tenants with one connected account each, averaging five unique comment events per minute per tenant. Assume that 20% of comments start a run, 40% of runs receive a qualifying email, total DM intake is 30% of comment intake, and redelivery adds 10% to inbound attempts. The peak column applies a 3× burst to all rates. The arithmetic assumes both initial sends succeed and each accepted email creates a link action.
-
-| Work | Calculation | Steady per second | Peak per second |
-| --- | --- | ---: | ---: |
-| Unique comments | `100 × 5 / 60` | 8.33 | 25 |
-| Unique messages | `comments × 0.30` | 2.50 | 7.5 |
-| Ingress attempts | `(comments + messages) × 1.10` | 11.92 | 35.75 |
-| Started runs | `comments × 0.20` | 1.67 | 5 |
-| Accepted emails | `started × 0.40` | 0.67 | 2 |
-| New outbound actions | `2 × started + accepted` | 4.00 | 12 |
-
-At peak, the write path sees about 36 intake transactions and 24 claim/settlement transactions per second. Add one lease-expiry statement per delivery call in the prototype, idle polling, retries, wait expiry, and reconciliation. The active-wait upper bound at a sustained five starts per second and a 24-hour wait is about 432,000 waits, assuming every prompt reaches waiting and every participant stays until expiry. Pending sends and unresolved outcomes have separate backlog counts.
-
-The steady rates yield roughly 936,000 inbox rows, 144,000 runs, 345,600 outbox rows, and 57,600 leads per day. As a sensitivity check, 0.5–1 KiB per row across heap and indexes gives about 0.7–1.4 GiB per day before WAL, dead tuples, backups, replicas, or analytics copies. Measure `pg_total_relation_size`, dead tuples, and WAL volume on a retention-aged test database. Budget each table against its own retention policy, including the provider replay horizon for deduplication and the approved lifetime of stored contact data. [PostgreSQL disk usage](https://www.postgresql.org/docs/current/disk-usage.html)
-
-If the provider and database jointly allow a 24-action/s recovery rate, a 10-minute outage at 12 new actions/s leaves about 7,200 queued actions. With arrivals continuing at 12/s, draining them takes another 10 minutes at the net rate of 12/s. In general, `drain time = backlog / (effective send rate − new action rate)`. Provider account or app limits can make that denominator zero for an affected account. At a hypothetical mean 250 ms per delivery with a 70% worker utilization target, `ceil(24 × 0.25 / 0.70) = 9` gives a starting concurrency for a recovery experiment. Keep database connections bounded independently of network concurrency, then adjust using settlement latency, observed rate limiting, and queue age.
+The two workloads exercise competing PostgreSQL consumers and record accepted simulator effects. See the production sizing model for traffic projections, provider budget assumptions, and storage estimates. [Production sizing model](storage-and-sizing.md)
 
 ## Reproduce the PostgreSQL workload
 
@@ -32,11 +15,11 @@ Both commands select the same default scenario. `--participants` is per tenant. 
 
 The program enqueues comments, drains their public replies and prompts with competing workers, verifies that all runs are waiting, and changes the configured link for each tenant. It then submits eligible synthetic replies, drains the link actions, and verifies persisted rows and simulator effects. The checks cover event deduplication, one completed run and one lead for every comment, no leftover buffered email, action order, ownership, original link content, and one recorded receipt per action. Output contains counts, timings, and runtime metadata.
 
-Each phase reports wall time, completed operations per second, and nearest-rank p50, p95, and p99 call latency. Ingress counts include duplicate attempts. Drain counts include successful calls, and drain wall time includes the final idle polls. Client call timing uses a monotonic clock and includes pool and database waits. PostgreSQL timestamps measure enqueue-to-first-attempt latency by action kind. The deliberate separation of ingest and drain makes that queue measurement a burst-backlog observation. Setup, version publication, and verification queries are outside the phase timings.
+Each phase reports wall time, completed operations per second, and nearest-rank p50, p95, and p99 call latency. Ingress counts include duplicate attempts. Drain counts include successful calls, and drain wall time includes repolling. A claim may return idle while another worker holds a lane lock. Each benchmark worker polls again after a 2 ms delay until the phase reaches its expected effect count or makes no progress for five seconds. Per-worker sends and idle polls describe worker contention. The skew workload observes fairness across accounts separately. Client call timing uses a monotonic clock and includes pool and database waits. PostgreSQL timestamps measure enqueue-to-first-attempt latency by action kind. The deliberate separation of ingest and drain makes that queue measurement a burst-backlog observation. Setup, version publication, verification, and relation-size queries are outside the phase timings.
 
-### Observed local run
+### Historical 400-conversation baseline
 
-On 24 November 2026, the default workload at core commit `275a6a4` ran on macOS arm64 with an Apple M3 Pro (11 logical CPUs), Node.js 22.22.0, and local Homebrew PostgreSQL 14.25. It used eight ingress workers, four delivery workers, and a pool limit of eight connections. Each ingress phase submitted 1,200 attempts and accepted 400 unique events with 800 duplicate outcomes.
+On 24 November 2026, the default workload at core commit `275a6a4` ran on macOS arm64 with an Apple M3 Pro (11 logical CPUs), Node.js 22.22.0, and local Homebrew PostgreSQL 14.25. This baseline preceded account rotation and benchmark idle repolling. It used eight ingress workers, four delivery workers, and a pool limit of eight connections. Each ingress phase submitted 1,200 attempts and accepted 400 unique events with 800 duplicate outcomes.
 
 | Phase | Operations | Wall time (ms) | Operations/s | p95 call (ms) |
 | --- | ---: | ---: | ---: | ---: |
@@ -47,13 +30,54 @@ On 24 November 2026, the default workload at core commit `275a6a4` ran on macOS 
 
 The run verified 800 inbox rows, 400 completed runs, 400 leads, 1,200 sent outbox rows, 1,200 simulated provider effects, and zero buffered emails. The four workers sent 201, 198, 200, and 201 replies and prompts respectively, then 100, 100, 99, and 101 links. The p95 enqueue-to-first-attempt delay was 144.21 ms for public replies, 144.41 ms for prompts, and 113.53 ms for links.
 
-The load scenario covers concurrent database work in one Node.js process with a zero-network-delay simulator. The HTTP and recovery tests provide separate evidence for the service boundary, process restarts, retry outcomes, and ambiguous sends. For a deployment capacity measurement, rerun with the database at its expected retention age, remote PostgreSQL latency, concurrent ingress and drain, a skewed tenant mix, and a recording adapter that reproduces measured latency and rate limits. [HTTP end-to-end test](../test/e2e.test.ts) · [Delivery tests](../test/delivery.test.ts)
+### Observed 5,000-conversation fair queue run
+
+On the same local setup at core commit `83ef847`, `npm run load -- --tenants 50 --participants 100` exercised the fair queue and kept all four delivery workers polling until each phase reached its expected action count. The run verified 5,000 completed runs, 10,000 inbox rows, 5,000 leads, and exactly 15,000 accepted simulator effects backed by 15,000 sent outbox rows. Each ingress phase received 5,000 unique events and 10,000 duplicates. [Recorded command output](measurements.json)
+
+| Phase | Operations | Wall time (ms) | Operations/s | p95 call (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| Comment ingress | 15,000 | 918.34 | 16,333.86 | 0.73 |
+| Public reply and prompt drain | 10,000 | 3,202.86 | 3,122.21 | 1.71 |
+| Response ingress | 15,000 | 859.62 | 17,449.63 | 0.59 |
+| Link drain | 5,000 | 1,132.84 | 4,413.69 | 1.11 |
+
+The four workers sent 2,498, 2,498, 2,501, and 2,503 replies and prompts respectively, then 1,249, 1,250, 1,250, and 1,251 links. There were three idle polls in each drain. The p95 enqueue-to-first-attempt delay was 1,913.95 ms for public replies, 1,774.39 ms for prompts, and 1,535.42 ms for links.
+
+The relation sizes below were measured after the run on the disposable database. They include allocated relation pages and indexes at that point. WAL and backup sizes are separate. [PostgreSQL disk usage](https://www.postgresql.org/docs/current/disk-usage.html)
+
+| Relation | Rows | Table bytes | Index bytes | Total bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `inbox` | 10,000 | 1,400,832 | 2,539,520 | 3,940,352 |
+| `runs` | 5,000 | 1,318,912 | 1,974,272 | 3,293,184 |
+| `outbox` | 15,000 | 3,883,008 | 4,390,912 | 8,273,920 |
+| `leads` | 5,000 | 458,752 | 212,992 | 671,744 |
+
+The load scenario covers concurrent database work in one Node.js process with an immediate-success simulator. The HTTP and recovery tests provide separate evidence for the service boundary, process restarts, retry outcomes, and ambiguous sends. For deployment capacity, rerun against a retention-aged database with the expected database latency, concurrent ingress and drain, and an adapter fixture calibrated to observed network latency and rate limits. [HTTP end-to-end test](../test/e2e.test.ts) · [Delivery tests](../test/delivery.test.ts)
+
+## Reproduce the skew and backpressure workload
+
+```sh
+npm run skew
+npm run skew -- --hot-comments 1000 --workers 4 --adapter-ms 5
+```
+
+The default workload starts with 216 matching comments queued for one tenant account. A second tenant account submits one matching comment after delivery begins. Four workers compete for claims, and the harness checks that the quiet account's prompt arrives while hot-account work remains pending. The check budgets at most four hot-account acceptances per worker before that prompt. This finite-workload regression threshold allows for already claimed work and variable completion order across workers.
+
+The adapter fixture delays each send by 5 ms and injects one known-unsent rate limit with a 3-second retry delay. These are workload inputs. During the actual persisted cooldown, another 24 comments arrive for the hot account, and a third tenant account settles its public reply and email prompt. The harness checks that the hot account receives no additional provider calls during this check. It waits for the database retry deadline and drains the delayed queue using the same worker API. Then synthetic email replies advance both quiet runs and every hot run. Stored receipts and recorded effects prove there is one ordered effect per step, with the right account, participant, and link. A successful default run has 242 completed runs, 726 accepted actions, and one additional proven-unsent attempt.
+
+The report counts hot-account acceptances before the quiet reply and prompt. PostgreSQL timestamps give the age of each quiet action at its first claim, the interval from run start to prompt settlement, and evidence that the second quiet prompt settled before cooldown ended. The recovery rate counts accepted initial actions after the retry became due and divides by drain wall time. The separate response and link phase is outside that rate. The portable verification target also runs this scenario with 64 hot-account comments and a 1 ms adapter delay. [Scenario source](../scripts/skew.ts)
+
+### Observed skew run
+
+On the same local setup at core commit `83ef847`, the first quiet account's reply and prompt were accepted after one and four additional hot-account acceptances respectively. The quiet reply spent 1.27 ms queued and the prompt spent 1.40 ms queued. Its prompt settled 14.12 ms after run creation, with 216 hot actions still pending. This phase made two idle polls. [Recorded command output](measurements.json)
+
+During the 3-second cooldown, 24 new hot comments entered the queue and 240 hot actions were pending at the check. The second quiet account settled both initial sends within the cooldown, with 12.36 ms from run creation to prompt settlement. The check made 16 idle polls and recorded zero additional provider calls for the hot account. After the retry deadline, workers delivered 473 accepted initial actions in 879.21 ms (537.98/s), with 164 idle polls. The scenario finished with 242 completed runs, 242 leads, 484 inbox rows, 726 sent outbox rows and simulator effects, and 727 outbound attempts. The extra attempt was the single confirmed-unsent rate limit.
 
 ## Scale by the limiting resource
 
-Begin with a PostgreSQL primary and horizontally scalable stateless workers. `FOR UPDATE SKIP LOCKED` lets workers claim different rows during short transactions. The worker releases its connection before the adapter call. A global due-work order can still favor a tenant with an older or larger backlog. Track ready queue age and depth, throughput, retries, and rate limiting by account and action kind, using bounded dimensions and keeping tenant drilldowns out of high-cardinality metric labels. Add per-account concurrency caps and fair scheduling by tenant if healthy accounts see rising queue age while another account dominates the work. Reserve separate capacity for intake so provider delays cannot fill the database pool. [PostgreSQL SELECT](https://www.postgresql.org/docs/current/sql-select.html)
+Begin with a PostgreSQL primary and horizontally scalable stateless workers. The scheduler rotates among eligible tenant and account pairs through durable turn numbers. `FOR UPDATE SKIP LOCKED` lets workers claim different lanes during short transactions. The worker releases its connection before the adapter call. Multiple eligible accounts under one tenant each get a turn, and an account may have several sends in flight. Add provider-specific concurrency caps or hierarchical tenant budgets when account fan-out or adapter constraints make them necessary. Track ready queue age, depth, throughput, retries, and rate limiting by account and action kind, keeping tenant drilldowns out of high-cardinality labels. Reserve separate connection capacity for intake. [Fair delivery migration](../db/004_fair_delivery.sql) · [PostgreSQL SELECT](https://www.postgresql.org/docs/current/sql-select.html)
 
-Use provisional internal objectives such as p95 durable intake below 250 ms and p95 ready-action age below 5 seconds during the modeled burst, excluding work scheduled for a future retry or rate-limited account. Observe the oldest ready action, deadline headroom, waiting and uncertain counts, settlement latency, pool wait, lock and disk waits, autovacuum progress, and replica lag. Compare queue growth and actual send rate with arrival rate before adding workers. Add provider concurrency when spare provider quota exists and database saturation metrics stay flat. If idle lease sweeps and queue scans dominate, reduce idle polling and separate bounded maintenance from the claim loop.
+Use provisional internal objectives such as p95 durable intake below 250 ms and p95 ready-action age below 5 seconds during the modeled burst, excluding work scheduled for a future retry or rate-limited account. Observe the oldest ready action, deadline headroom, waiting and uncertain counts, settlement latency, pool wait, lock and disk waits, autovacuum progress, and replica lag. Compare queue growth and actual send rate with arrival rate before adding workers. Add provider concurrency when spare provider quota exists and database saturation metrics stay flat. The claim query inspects candidate lanes in turn order and seeks each lane's due work through an index. If many lanes have delayed or expired work, the poll can inspect many candidates. If idle lease sweeps or lane scans dominate, back off idle polling and evaluate a due-lane index or separate bounded maintenance for lease expiry. [Delivery and recovery](delivery-recovery.md)
 
 Keep live deduplication, active conversations, and retryable work together. Move terminal history to time-partitioned tables when retention deletes, vacuum time, or index growth materially reduce headroom. Keep compact idempotency keys for at least the agreed replay horizon. In PostgreSQL, partitioned unique constraints must cover the partition key, so a date partition alone cannot enforce the live uniqueness keys across dates. Rehearse retention against late events before deleting deduplication records. [PostgreSQL partitioning](https://www.postgresql.org/docs/current/ddl-partitioning.html)
 
