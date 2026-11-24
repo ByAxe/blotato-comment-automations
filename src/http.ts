@@ -5,8 +5,9 @@ import {
   BEARER_VALUE, createJsonServer, hashToken, HttpError, invalidRequest,
   json, presentedCredentials, readBody, requestUrl, stringField, utcDate, UUID,
 } from './http-boundary.js';
+import { readParticipantContext } from './participant-context.js';
 import { ConfigurationError, databaseReady } from './runtime.js';
-import { ingest, publish, setEnabled } from './workflow.js';
+import { forgetParticipantContext, ingest, publish, setEnabled } from './workflow.js';
 
 const PATH_ID = /^(?!\.{1,2}$)[A-Za-z0-9._~-]{1,255}$/;
 
@@ -56,8 +57,8 @@ function checkAccount(requested: string, access: DemoAccess): void {
   if (requested !== access.accountId) throw new HttpError(403, 'forbidden');
 }
 
-function postIdField(body: Record<string, unknown>): string | null {
-  return body.postId === undefined || body.postId === null ? null : stringField(body, 'postId', 255);
+function optionalStringField(body: Record<string, unknown>, key: string, max: number): string | null {
+  return body[key] === undefined || body[key] === null ? null : stringField(body, key, max);
 }
 
 async function checkedWorkflowRequest<T>(operation: Promise<T>): Promise<T> {
@@ -112,23 +113,30 @@ export function createHttpServer(pool: Pool, access: DemoAccess): Server {
 
     if (req.method === 'POST' && resource.join('/') === 'automations') {
       authorize(req, tenantId, 'control');
-      const body = await readBody(req, ['accountId', 'keyword', 'publicReply', 'emailPrompt', 'linkUrl', 'postId']);
+      const body = await readBody(req, [
+        'accountId', 'keyword', 'publicReply', 'emailPrompt', 'linkUrl', 'postId',
+        'collectParticipantContext', 'returningEmailPrompt',
+      ]);
       const accountId = stringField(body, 'accountId', 255);
       checkAccount(accountId, access);
+      const { collectParticipantContext = false } = body;
+      if (typeof collectParticipantContext !== 'boolean') invalidRequest();
       const versionId = await checkedWorkflowRequest(publish(pool, {
         tenantId,
         accountId,
         keyword: stringField(body, 'keyword', 128),
         publicReply: stringField(body, 'publicReply', 2_000),
         emailPrompt: stringField(body, 'emailPrompt', 2_000),
+        collectParticipantContext,
+        returningEmailPrompt: optionalStringField(body, 'returningEmailPrompt', 2_000),
         linkUrl: stringField(body, 'linkUrl', 2_048),
-        postId: postIdField(body),
+        postId: optionalStringField(body, 'postId', 255),
       }));
       json(res, 201, { versionId });
       return;
     }
 
-    const [collectionName, account, operation] = resource;
+    const [collectionName, account, operation, subresource] = resource;
     if (req.method === 'PUT' && resource.length === 3 &&
         collectionName === 'automations' && account && operation === 'enabled') {
       authorize(req, tenantId, 'control');
@@ -140,6 +148,23 @@ export function createHttpServer(pool: Pool, access: DemoAccess): Server {
       if (!updated) throw new HttpError(404, 'not_found');
       res.writeHead(204, { 'Cache-Control': 'no-store' });
       res.end();
+      return;
+    }
+
+    if (req.method === 'POST' && collectionName === 'automations' && account && operation === 'participant-context' &&
+        (resource.length === 3 || (resource.length === 4 && subresource === 'deletions'))) {
+      authorize(req, tenantId, 'control');
+      const accountId = pathId(account);
+      checkAccount(accountId, access);
+      const body = await readBody(req, ['participantId']);
+      const participantId = stringField(body, 'participantId', 255);
+      if (resource.length === 3) {
+        json(res, 200, await readParticipantContext(pool, tenantId, accountId, participantId));
+      } else {
+        await forgetParticipantContext(pool, tenantId, accountId, participantId);
+        res.writeHead(204, { 'Cache-Control': 'no-store' });
+        res.end();
+      }
       return;
     }
 
@@ -164,7 +189,7 @@ export function createHttpServer(pool: Pool, access: DemoAccess): Server {
         eventId: stringField(body, 'eventId', 255),
         objectId: stringField(body, 'objectId', 255),
         kind,
-        ...(kind === 'comment' && { postId: postIdField(body) }),
+        ...(kind === 'comment' && { postId: optionalStringField(body, 'postId', 255) }),
         text: stringField(body, 'text', 16_000, true),
         occurredAt: utcDate(body.occurredAt),
         platform,

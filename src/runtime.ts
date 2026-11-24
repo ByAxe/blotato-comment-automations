@@ -46,7 +46,14 @@ export async function databaseReady(db: Pick<Pool, 'query'>): Promise<boolean> {
       VALUES ('outbox', 'send_before'), ('outbox', 'sent_at'),
              ('outbox', 'tenant_id'), ('outbox', 'account_id'),
              ('delivery_lanes', 'pending_count'), ('delivery_lanes', 'turn'),
-             ('automation_versions', 'post_id'), ('inbox', 'post_id')
+             ('automation_versions', 'post_id'), ('inbox', 'post_id'),
+             ('automation_versions', 'collect_participant_context'),
+             ('automation_versions', 'returning_email_prompt'),
+             ('runs', 'collect_participant_context'),
+             ('participant_interactions', 'tenant_id'), ('participant_interactions', 'account_id'),
+             ('participant_interactions', 'participant_id'), ('participant_interactions', 'run_id'),
+             ('participant_interactions', 'event_id'), ('participant_interactions', 'occurred_at'),
+             ('participant_interactions', 'excerpt'), ('participant_interactions', 'pending_prompt')
     )
     SELECT to_regclass('automations') IS NOT NULL
        AND to_regclass('runs') IS NOT NULL

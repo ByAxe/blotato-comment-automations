@@ -63,16 +63,25 @@ test('upgrading existing definitions and queued replies preserves account-wide t
     await apply('004_fair_delivery.sql');
     assert.equal(await databaseReady(client), false);
     await apply('005_post_scope.sql');
+    assert.equal(await databaseReady(client), false);
+    await apply('006_participant_context.sql');
     assert.equal(await databaseReady(client), true);
     const { rows } = await client.query(`
-      SELECT v.post_id AS target, i.post_id AS source, o.kind, l.pending_count::integer AS pending
+      SELECT v.post_id AS target, i.post_id AS source, o.kind, l.pending_count::integer AS pending,
+             v.collect_participant_context AS version_collects_context, v.returning_email_prompt,
+             r.collect_participant_context AS run_collects_context
       FROM automations a JOIN automation_versions v ON v.id=a.current_version_id
       JOIN runs r ON r.version_id=v.id JOIN outbox o ON o.run_id=r.id
       JOIN delivery_lanes l ON l.tenant_id=o.tenant_id AND l.account_id=o.account_id
       JOIN inbox i ON i.tenant_id=r.tenant_id AND i.account_id=r.account_id AND i.object_id=r.comment_id
       WHERE r.tenant_id='before'
     `);
-    assert.deepEqual(rows, [{ target: null, source: null, kind: 'comment_reply', pending: 1 }]);
+    assert.deepEqual(rows, [{
+      target: null, source: null, kind: 'comment_reply', pending: 1,
+      version_collects_context: false, returning_email_prompt: null, run_collects_context: false,
+    }]);
+    const history = await client.query('SELECT event_id FROM participant_interactions');
+    assert.deepEqual(history.rows, []);
   } finally {
     try { await client.query('ROLLBACK'); } finally { client.release(); }
   }

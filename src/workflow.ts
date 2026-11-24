@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import type { ActionKind } from './adapter.js';
+import { recordInteraction, returningPrompt } from './participant-context.js';
 
 export interface DefinitionInput {
   tenantId: string;
@@ -8,6 +9,8 @@ export interface DefinitionInput {
   postId?: string | null;
   publicReply: string;
   emailPrompt: string;
+  collectParticipantContext?: boolean;
+  returningEmailPrompt?: string | null;
   linkUrl: string;
 }
 
@@ -35,6 +38,7 @@ interface Run {
   state: string;
   prompt_started_at: Date | null;
   expires_at: Date | null;
+  collect_participant_context: boolean;
 }
 
 export async function transaction<T>(pool: Pool, operation: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -96,6 +100,10 @@ export async function publish(pool: Pool, input: DefinitionInput): Promise<strin
   const postId = optionalPostId(input.postId);
   const reply = requiredString(input.publicReply, 2000).trim();
   const prompt = requiredString(input.emailPrompt, 2000).trim();
+  const collect = input.collectParticipantContext === undefined ? false : input.collectParticipantContext;
+  if (typeof collect !== 'boolean') throw new TypeError('Expected a participant context flag.');
+  const returning = input.returningEmailPrompt == null ? null : requiredString(input.returningEmailPrompt, 2000).trim();
+  if (returning && !collect) throw new TypeError('A returning prompt requires participant context.');
   const link = requiredString(input.linkUrl, 2048).trim();
   const url = new URL(link);
   if (!/^https:\/\//i.test(link) || /[\s\\\p{C}]/u.test(link) || url.protocol !== 'https:'
@@ -112,10 +120,11 @@ export async function publish(pool: Pool, input: DefinitionInput): Promise<strin
       'SELECT 1 FROM automations WHERE tenant_id=$1 AND account_id=$2 FOR UPDATE', [tenantId, accountId],
     );
     const created = await client.query<{ id: string }>(
-      `INSERT INTO automation_versions (tenant_id, account_id, revision, keyword, public_reply, email_prompt, link_url, post_id)
-       SELECT $1, $2, COALESCE(max(revision),0)+1, $3, $4, $5, $6, $7
+      `INSERT INTO automation_versions (tenant_id, account_id, revision, keyword, public_reply, email_prompt,
+                                        link_url, post_id, collect_participant_context, returning_email_prompt)
+       SELECT $1, $2, COALESCE(max(revision),0)+1, $3, $4, $5, $6, $7, $8, $9
        FROM automation_versions WHERE tenant_id=$1 AND account_id=$2 RETURNING id`,
-      [tenantId, accountId, keyword, reply, prompt, link, postId],
+      [tenantId, accountId, keyword, reply, prompt, link, postId, collect, returning],
     );
     const versionId = created.rows[0]!.id;
     await client.query(
@@ -141,6 +150,21 @@ async function lockConversation(client: PoolClient, tenantId: string, accountId:
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
     JSON.stringify([tenantId, accountId, participantId]),
   ]);
+}
+
+export async function forgetParticipantContext(pool: Pool, tenantId: string, accountId: string, participantId: string) {
+  for (const id of [tenantId, accountId, participantId]) requiredString(id, 255);
+  const scope = [tenantId, accountId, participantId];
+  await transaction(pool, async client => {
+    await lockConversation(client, tenantId, accountId, participantId);
+    await client.query(
+      `UPDATE runs SET collect_participant_context=false WHERE tenant_id=$1 AND account_id=$2 AND participant_id=$3
+       AND collect_participant_context AND state IN ('reply_pending','prompt_pending','waiting','link_pending')`, scope,
+    );
+    await client.query(
+      'DELETE FROM participant_interactions WHERE tenant_id=$1 AND account_id=$2 AND participant_id=$3', scope,
+    );
+  });
 }
 
 async function lockRun(client: PoolClient, id: string): Promise<Run> {
@@ -183,8 +207,8 @@ async function expireIfDue(client: PoolClient, runId: string): Promise<boolean> 
 async function handleComment(
   client: PoolClient, event: SocialEvent, active: Run | undefined, postId: string | null,
 ): Promise<IngestResult> {
-  const version = (await client.query<{ id: string }>(
-    `SELECT v.id FROM automations a JOIN automation_versions v ON v.id=a.current_version_id
+  const version = (await client.query<{ id: string; collect_participant_context: boolean }>(
+    `SELECT v.id, v.collect_participant_context FROM automations a JOIN automation_versions v ON v.id=a.current_version_id
      WHERE a.tenant_id=$1 AND a.account_id=$2 AND a.enabled AND v.keyword=$3
        AND (v.post_id IS NULL OR v.post_id=$4)`,
     [event.tenantId, event.accountId, normalized(event.text), postId],
@@ -192,12 +216,15 @@ async function handleComment(
   if (!version) return { outcome: 'ignored', runId: null };
   if (active) return { outcome: 'busy', runId: active.id };
   const run = (await client.query<{ id: string }>(
-    `INSERT INTO runs (tenant_id, account_id, participant_id, comment_id, version_id, comment_occurred_at, state)
-     VALUES ($1,$2,$3,$4,$5,$6,'reply_pending')
+    `INSERT INTO runs (tenant_id, account_id, participant_id, comment_id, version_id, comment_occurred_at,
+                       collect_participant_context, state)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'reply_pending')
      ON CONFLICT (tenant_id, account_id, comment_id) DO NOTHING RETURNING id`,
-    [event.tenantId, event.accountId, event.participantId, event.objectId, version.id, event.occurredAt],
+    [event.tenantId, event.accountId, event.participantId, event.objectId, version.id, event.occurredAt,
+      version.collect_participant_context],
   )).rows[0];
   if (!run) return { outcome: 'duplicate', runId: null };
+  if (version.collect_participant_context) await recordInteraction(client, run.id, event);
   await enqueue(client, run.id, 'comment_reply');
   return { outcome: 'started', runId: run.id };
 }
@@ -214,14 +241,18 @@ async function handleMessage(
     return ignored;
   }
   const email = emailFrom(event.text);
-  if (!email) return ignored;
   if (active.state === 'prompt_pending') {
+    if (!email) return ignored;
     const inserted = await client.query(
       `INSERT INTO buffered_emails (run_id,email,occurred_at,received_at,object_id) VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (run_id) DO NOTHING`, [active.id, email, event.occurredAt, receivedAt, event.objectId],
     );
-    return inserted.rowCount ? { outcome: 'buffered', runId: active.id } : ignored;
+    if (!inserted.rowCount) return ignored;
+    if (active.collect_participant_context) await recordInteraction(client, active.id, event, true);
+    return { outcome: 'buffered', runId: active.id };
   }
+  if (active.collect_participant_context) await recordInteraction(client, active.id, event);
+  if (!email) return ignored;
   await capture(client, active.id, { email, objectId: event.objectId, occurredAt: event.occurredAt });
   return { outcome: 'accepted', runId: active.id };
 }
@@ -264,7 +295,7 @@ export async function ingest(pool: Pool, event: SocialEvent): Promise<IngestResu
 }
 
 // Called inside the delivery worker's transaction before its network call.
-export async function onPromptStarted(client: PoolClient, runId: string): Promise<void> {
+export async function onPromptStarted(client: PoolClient, runId: string): Promise<string | null> {
   const run = await lockRun(client, runId);
   if (run.state !== 'prompt_pending') throw new Error('Unexpected prompt claim.');
   await client.query(
@@ -272,6 +303,7 @@ export async function onPromptStarted(client: PoolClient, runId: string): Promis
      UPDATE runs SET prompt_started_at=t, expires_at=t + interval '24 hours'
      FROM instant WHERE id=$1 AND prompt_started_at IS NULL`, [runId],
   );
+  return run.collect_participant_context ? returningPrompt(client, runId) : null;
 }
 
 // A retry after a proven non-send must open a fresh correlation window.
@@ -279,6 +311,9 @@ export async function onPromptUnsent(client: PoolClient, runId: string): Promise
   const run = await lockRun(client, runId);
   if (run.state !== 'prompt_pending') throw new Error('Unexpected prompt rejection.');
   await client.query('DELETE FROM buffered_emails WHERE run_id=$1', [runId]);
+  if (run.collect_participant_context) {
+    await client.query('DELETE FROM participant_interactions WHERE run_id=$1 AND pending_prompt', [runId]);
+  }
   await client.query('UPDATE runs SET prompt_started_at=NULL, expires_at=NULL WHERE id=$1', [runId]);
 }
 
@@ -295,6 +330,9 @@ export async function onDeliverySent(client: PoolClient, runId: string, kind: Ac
       'DELETE FROM buffered_emails WHERE run_id=$1 RETURNING email, object_id AS "objectId", occurred_at AS "occurredAt"', [runId],
     )).rows[0];
     if (candidate) {
+      if (run.collect_participant_context) {
+        await client.query('UPDATE participant_interactions SET pending_prompt=false WHERE run_id=$1 AND pending_prompt', [runId]);
+      }
       await capture(client, runId, candidate);
     } else {
       await client.query("UPDATE runs SET state='waiting' WHERE id=$1", [runId]);
@@ -306,8 +344,11 @@ export async function onDeliverySent(client: PoolClient, runId: string, kind: Ac
 }
 
 async function finishUnsent(client: PoolClient, runId: string, state: 'expired' | 'failed'): Promise<void> {
-  await lockRun(client, runId);
+  const run = await lockRun(client, runId);
   await client.query('DELETE FROM buffered_emails WHERE run_id=$1', [runId]);
+  if (run.collect_participant_context) {
+    await client.query('DELETE FROM participant_interactions WHERE run_id=$1 AND pending_prompt', [runId]);
+  }
   await client.query('UPDATE runs SET state=$2, finished_at=clock_timestamp() WHERE id=$1', [runId, state]);
 }
 

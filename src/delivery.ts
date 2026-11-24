@@ -185,7 +185,8 @@ export async function deliverOne(pool: Pool, adapter: SocialAdapter, options: Wo
           AND lease_until > clock_timestamp() FOR UPDATE
       `, [action.id, token]);
       if (!owned.rowCount) return "stale";
-      await onPromptStarted(client, action.runId);
+      const personalPrompt = await onPromptStarted(client, action.runId);
+      if (personalPrompt !== null) action.text = personalPrompt;
       const stillOwned = await client.query(
         'SELECT 1 FROM outbox WHERE id=$1 AND lease_until > clock_timestamp()', [action.id],
       );

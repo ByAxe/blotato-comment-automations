@@ -3,6 +3,7 @@ import { deliverOne } from '../src/delivery.js';
 import { FakeHttpSocialAdapter } from '../src/http-provider.js';
 import { databaseReady, integerEnv, logEvent, logFailure, openPool, requiredEnv } from '../src/runtime.js';
 import { expireWaits } from '../src/workflow.js';
+import { expireParticipantContext } from '../src/participant-context.js';
 
 async function main(): Promise<void> {
   const pollMs = integerEnv('WORKER_POLL_MS', 1_000, 10, 60_000);
@@ -20,8 +21,13 @@ async function main(): Promise<void> {
     }
 
     if (!stop.signal.aborted) logEvent('worker_ready');
+    let nextContextSweep = 0;
     while (!stop.signal.aborted) {
       try {
+        if (Date.now() >= nextContextSweep) {
+          const removed = await expireParticipantContext(pool);
+          if (removed === 0) nextContextSweep = Date.now() + 60_000;
+        }
         await expireWaits(pool);
         if (stop.signal.aborted) break;
         const outcome = await deliverOne(pool, adapter);
