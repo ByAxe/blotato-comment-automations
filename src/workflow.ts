@@ -2,6 +2,8 @@ import type { Pool, PoolClient } from 'pg';
 import type { ActionKind } from './adapter.js';
 import { recordInteraction, returningPrompt } from './participant-context.js';
 
+const REPLY_ACTION_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
 export interface DefinitionInput {
   tenantId: string;
   accountId: string;
@@ -22,6 +24,8 @@ export interface SocialEvent {
   eventId: string;
   objectId: string;
   postId?: string | null;
+  /** Omit for a plain DM. Use null for an explicit reply with no verified action mapping. */
+  replyToActionId?: string | null;
   kind: 'comment' | 'message';
   text: string;
   occurredAt: Date;
@@ -240,6 +244,14 @@ async function handleMessage(
   if (event.occurredAt < start || receivedAt < start || receivedAt >= deadline) {
     return ignored;
   }
+  if (event.replyToActionId === null) return ignored;
+  if (event.replyToActionId !== undefined) {
+    const target = await client.query(
+      "SELECT 1 FROM outbox WHERE run_id=$1 AND kind='email_prompt' AND id=$2",
+      [active.id, event.replyToActionId],
+    );
+    if (!target.rowCount) return ignored;
+  }
   const email = emailFrom(event.text);
   if (active.state === 'prompt_pending') {
     if (!email) return ignored;
@@ -263,6 +275,13 @@ export async function ingest(pool: Pool, event: SocialEvent): Promise<IngestResu
   }
   if (event.kind === 'message' && Object.hasOwn(event, 'postId')) {
     throw new TypeError('Only a comment can have a post ID.');
+  }
+  if ('replyToActionId' in event) {
+    if (event.kind !== 'message') throw new TypeError('Only a message can have a reply target.');
+    const { replyToActionId } = event;
+    if (replyToActionId !== null && (typeof replyToActionId !== 'string' || !REPLY_ACTION_ID.test(replyToActionId))) {
+      throw new TypeError('A reply target must be an action UUID or null.');
+    }
   }
   const postId = optionalPostId(event.postId);
   if (event.platform !== 'instagram' || event.isSelf) return { outcome: 'ignored', runId: null };

@@ -46,7 +46,7 @@ else Valid external event
         api -> api : Outcome ignored
       end
     else Inbound message
-      api -> db : Evaluate reply window\nBuffer or capture valid email\nRecord eligible context if opted in
+      api -> db : Check reply window and target\nBuffer or capture valid email\nRecord eligible context if opted in
     end
   else Duplicate or future-dated event
     api -> api : Outcome duplicate or ignored

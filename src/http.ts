@@ -171,7 +171,7 @@ export function createHttpServer(pool: Pool, access: DemoAccess): Server {
     if (req.method === 'POST' && resource.join('/') === 'adapter/events') {
       authorize(req, tenantId, 'adapter');
       const body = await readBody(req, [
-        'accountId', 'participantId', 'eventId', 'objectId', 'postId',
+        'accountId', 'participantId', 'eventId', 'objectId', 'postId', 'replyToActionId',
         'kind', 'text', 'occurredAt', 'platform', 'isSelf',
       ]);
       const accountId = stringField(body, 'accountId', 255);
@@ -190,6 +190,7 @@ export function createHttpServer(pool: Pool, access: DemoAccess): Server {
         objectId: stringField(body, 'objectId', 255),
         kind,
         ...(kind === 'comment' && { postId: optionalStringField(body, 'postId', 255) }),
+        ...(Object.hasOwn(body, 'replyToActionId') && { replyToActionId: optionalStringField(body, 'replyToActionId', 36) }),
         text: stringField(body, 'text', 16_000, true),
         occurredAt: utcDate(body.occurredAt),
         platform,

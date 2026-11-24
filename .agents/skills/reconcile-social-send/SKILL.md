@@ -5,7 +5,7 @@ description: Investigate or resolve a held outbound reply or DM when a timeout, 
 
 # Reconcile an uncertain social send
 
-Read [Recovering an uncertain send](../../../docs/delivery-recovery.md) for exact CLI arguments and evidence fields. Identify the environment, tenant, action ID and current attempt from authorized read access or a supplied snapshot. Use the stable action ID to check the provider account, recipient, operation and time. Keep references opaque.
+Read [Recovering an uncertain send](../../../docs/delivery-recovery.md) for exact CLI arguments and evidence fields. Identify the environment, tenant, action ID and current attempt from authorized read access or a supplied snapshot. Use the stable action ID to check the provider account, recipient, operation and time. In the operator handoff, record the provider trace reference for the decision. A confirmed absence also needs a separate reference to the dispatcher quiescence evidence. Use opaque references that an operator can look up without disclosing the recipient or message.
 
 - Record `confirmed_sent` only with provider evidence that matches this action and an acceptance receipt.
 - Record `confirmed_absent` only with affirmative evidence of non-acceptance and evidence that the old dispatcher and transport can no longer submit or complete the send. A lost acknowledgement, expired lease or missing item in an eventually consistent feed leaves it held. Applying this decision makes a new claim possible within the original send window. After the cutoff it expires the run.

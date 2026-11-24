@@ -9,7 +9,7 @@ Customers use comment-triggered automations to respond to people who comment on 
 | FR-01 | Publish or update an automation for a connected account with a keyword, messages, and destination URL. Disabling the rule stops new runs. Edits apply to later runs. | E1, W1, W4 |
 | FR-02 | With account-wide scope, start a run when a new external comment on any supported post of the account matches the enabled keyword. Ignore self-authored events and nonmatches. | E1, W1 |
 | FR-03 | For the pricing automation, reply publicly to the triggering comment with exactly `Sent you a DM!`. After acceptance, DM the commenter to request an email, then wait. | E1, W2 |
-| FR-04 | Accept a qualifying email from the same commenter on the same account during the active wait. Send the configured URL to that commenter. A DM outside that scoped wait or without a qualifying address cannot trigger the link. | E1, W4, W5 |
+| FR-04 | Accept a qualifying email from the same commenter on the same account during the active wait. Require explicit replies to target that run's email prompt. Send the configured URL to that commenter. | E1, W4, W5, C5 |
 | FR-05 | Expose the run and per-action status. Mark it complete only after the provider accepts the final DM. Keep unsuccessful or unresolved actions visible. | E1, D2, D4 |
 | FR-06 | Count starts, accepted sends, and email captures in the run's original UTC start cohort. Removing the captured address alone preserves the count. | A1 |
 | FR-07 | Prevent known-unsent actions from dispatching after their send deadline. Keep an unknown send unresolved when its deadline elapses. | P1–P3, D7 |
@@ -37,6 +37,7 @@ Customers use comment-triggered automations to respond to people who comment on 
 - Account-wide is the default when `postId` is absent or null. A published version can instead select one post by its exact, case-sensitive ID. A scoped version ignores comments from another post or with an unknown post ID. An account-wide version can start from an event without a post ID.
 - Allow one active run per tenant, account, and commenter. A second matching comment returns a busy outcome. The inbox keeps its identity so a redelivery cannot start another run.
 - Wait up to 24 hours from the prompt send attempt. The DM must occur and be durably received during that interval. Buffer an eligible early response pending prompt acceptance. A confirmed non-send discards that buffer and lets the next attempt open a fresh window.
+- Route plain DMs using the account, commenter, and active wait. Ignore explicit replies whose target is unmapped or belongs to any other outbound action, including for context collection.
 - For standard Instagram feed posts, dispatch the public acknowledgement and private prompt before 168 hours have elapsed from comment creation. Dispatch the final DM before 24 hours have elapsed from the accepted response's provider timestamp. The adapter enforces any narrower provider limit.
 - Accept one address-like token containing an `@` if it parses as a conventional ASCII email. Capture the accepted address as a lead. Invalid or ambiguous text leaves the wait open without another prompt.
 - A published version can opt in to collecting participant context and provide returning-commenter prompt copy. Eligible conversations contribute excerpts and their event and run references. The lookup is private to the connected account. Retained history can change only the email prompt copy. The public reply, 24-hour wait and fresh qualifying email requirement still apply. [Context records and retention](data.md#participant-context)
@@ -75,7 +76,8 @@ Each title below identifies an executable test. The HTTP test records outbound r
 | C2 | `test/participant-context.test.ts` | context lookup and collection are scoped and opt-in |
 | C3 | `test/participant-context.test.ts` | expired and forgotten context is unavailable and replay cannot recreate it |
 | C4 | `test/participant-context.test.ts` | a buffered message enters context only when its prompt attempt is accepted |
+| C5 | `test/participant-context.test.ts` | explicit DM replies must address the active email prompt to enter the workflow |
 
 **F3** runs via `npm run skew`. The harness checks that a quiet account receives both initial sends while a busy account still has a backlog. It also verifies progress for a separate account while the busy account is in cooldown and that the busy queue resumes afterward.
 
-Run `npm test` for the full suite or `npm run e2e` for E1. C1–C4 exercise the authenticated HTTP routes with PostgreSQL and a simulated social adapter. The recording provider verifies the local integration boundary. Live Instagram capability and delivery require separate verification.
+Run `npm test` for the full suite or `npm run e2e` for E1. C1–C5 exercise the authenticated HTTP routes with PostgreSQL and a simulated social adapter. The recording provider verifies the local integration boundary. Live Instagram capability and delivery require separate verification.

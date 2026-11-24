@@ -6,6 +6,7 @@ import { SimulatedAdapter } from '../src/adapter.js';
 import { deliverOne } from '../src/delivery.js';
 import { createHttpServer } from '../src/http.js';
 import { expireParticipantContext } from '../src/participant-context.js';
+import { ingest } from '../src/workflow.js';
 import { afterPrompt, comment, db, input, message } from './fixtures.js';
 
 after(() => db.end());
@@ -17,6 +18,7 @@ const emptyContext = { interactions: [], runs: [], truncated: false };
 
 type Configuration = ReturnType<typeof input>;
 type Trigger = ReturnType<typeof comment> & { postId?: string };
+type InboundMessage = ReturnType<typeof message> & { replyToActionId?: string | null };
 type Context = {
   interactions: Array<{
     kind: 'comment' | 'message';
@@ -68,7 +70,7 @@ async function connectedAccount(t: TestContext, config: Configuration) {
     return (text ? JSON.parse(text) : undefined) as T;
   }
 
-  async function ingest({ tenantId: _tenantId, ...event }: Trigger | ReturnType<typeof message>) {
+  async function ingest({ tenantId: _tenantId, ...event }: Trigger | InboundMessage) {
     return request<{ runId: string | null; outcome: string }>(ingestPath, adapterToken, 200, event);
   }
 
@@ -346,4 +348,58 @@ test('a buffered message enters context only when its prompt attempt is accepted
     objectId: entry.objectId, excerpt: entry.excerpt, emailAccepted: entry.emailAccepted,
   })), [{ objectId: responseId, excerpt: 'My quote address is [redacted]', emailAccepted: true }]);
   await sendLink(adapter, run, reader, config.linkUrl);
+});
+
+test('explicit DM replies must address the active email prompt to enter the workflow', async (t) => {
+  const config = input('context-reply-target');
+  const account = await connectedAccount(t, config);
+  const adapter = new SimulatedAdapter();
+  await account.publish(optIn);
+
+  const { tenantId: _tenantId, ...invalidComment } = comment(config, 'bad-comment');
+  await account.request(account.ingestPath, account.adapterToken, 400, { ...invalidComment, replyToActionId: null });
+  const invalidMessage = { ...invalidComment, kind: 'message' };
+  for (const replyToActionId of [false, 123, {}, 'provider-message-id']) {
+    await account.request(account.ingestPath, account.adapterToken, 400, { ...invalidMessage, replyToActionId });
+  }
+  await assert.rejects(ingest(db, {
+    ...message(config, 'undefined-target', 'reader@example.org', new Date()),
+    replyToActionId: undefined,
+  }), TypeError);
+
+  let previousPromptId: string | undefined;
+  for (const stage of ['prompt_pending', 'waiting'] as const) {
+    const runId = await account.start(comment(config, `trigger-${stage}`));
+    assert.equal(await deliverOne(db, adapter), 'sent');
+    const commentReplyId = adapter.sent.at(-1)!.id;
+
+    async function receiveReplies(promptId: string) {
+      assert.equal((await account.status(runId)).state, stage);
+      const occurredAt = await afterPrompt(runId);
+      for (const [label, replyToActionId] of [['wrong', previousPromptId ?? commentReplyId], ['unmapped', null]] as const) {
+        const event = message(config, `${label}-${stage}`, 'Ignore wrong@example.org.', occurredAt);
+        assert.deepEqual(await account.ingest({ ...event, replyToActionId }), { outcome: 'ignored', runId: null });
+      }
+      const valid = message(config, `valid-${stage}`, 'Send it to reader@example.org.', occurredAt);
+      const outcome = stage === 'prompt_pending' ? 'buffered' : 'accepted';
+      assert.deepEqual(await account.ingest({ ...valid, replyToActionId: promptId }), { outcome, runId });
+    }
+
+    assert.equal(await deliverOne(db, {
+      async send(action, signal) {
+        assert.equal(action.kind, 'email_prompt');
+        if (stage === 'prompt_pending') await receiveReplies(action.id);
+        return adapter.send(action, signal);
+      },
+    }), 'sent');
+    const promptId = adapter.sent.at(-1)!.id;
+    if (stage === 'waiting') await receiveReplies(promptId);
+    previousPromptId = promptId;
+
+    assert.equal((await account.status(runId)).state, 'link_pending');
+    const replies = (await account.context()).interactions.filter(entry => entry.runId === runId && entry.kind === 'message');
+    assert.deepEqual(replies.map(({ objectId, emailAccepted }) => ({ objectId, emailAccepted })),
+      [{ objectId: `valid-${stage}`, emailAccepted: true }]);
+    await sendLink(adapter, runId, reader, config.linkUrl);
+  }
 });

@@ -15,9 +15,9 @@ The **runs** list groups outgoing actions for the returned conversations in work
 | Event | History |
 | --- | --- |
 | Matching external comment that starts an opted-in run | Store its excerpt with the source ID, occurrence time and pinned run. |
-| DM from that participant received during the accepted prompt’s wait | Store its excerpt, including questions and other nonqualifying replies. Only the DM that supplies the run’s qualifying address gets `emailAccepted: true`. |
-| First qualifying DM while a prompt send is in flight | Stage a redacted excerpt in the same transaction as the workflow buffer. It becomes visible on prompt acceptance. A proven non-send discards it. |
-| Self-authored event, duplicate, comment with a busy outcome, or DM without an eligible scoped wait | No history entry. A DM after the conversation has completed falls outside the wait. |
+| Plain DM from that participant, or a DM explicitly replying to the active prompt, received during the accepted prompt’s wait | Store its excerpt, including questions and other nonqualifying replies. Only the DM that supplies the run’s qualifying address gets `emailAccepted: true`. |
+| First qualifying DM while the matching prompt send is in flight | Stage a redacted excerpt in the same transaction as the workflow buffer. It becomes visible on prompt acceptance. A proven non-send discards it. |
+| Self-authored event, duplicate, comment with a busy outcome, explicit reply to another or unverified target, or DM without an eligible scoped wait | No history entry. A DM after the conversation has completed falls outside the wait. |
 
 An `emailAccepted` fact means the workflow received one syntactically valid address. The application has no evidence of address ownership or marketing consent. The returning prompt uses this fact only if the retained response came from the same scoped person in a different run and occurred by the new comment’s provider timestamp. At prompt arming, the worker checks the pinned rule and the evidence still available. An erased or expired interaction cannot select the returning copy. A retry after a proven non-send opens a new attempt and evaluates the evidence again. A send with an unknown outcome stays held for reconciliation.
 

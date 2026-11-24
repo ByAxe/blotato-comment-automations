@@ -67,6 +67,8 @@ The response is `201` with `{"versionId":"<uuid>"}`. The first version enables t
 
 For comments, supply the provider's source post ID as `postId` when available. Use the same format as the publish field. A missing, null, or different post ID yields `ignored` when the rule is scoped to a particular post. Omit `postId` on inbound messages.
 
+For a DM that explicitly replies to a message, send `replyToActionId` with the UUID from the corresponding outbound action's `id` field. Send `null` if the adapter cannot verify the mapping. During prompt delivery and while waiting, a DM with an explicit target qualifies only if that UUID identifies the active run's email prompt. Unmapped and differently addressed replies return `ignored` and yield no excerpt or lead. Omit the field for a plain DM to use the conversation and time-window checks. The field is invalid on comments. Native callers must also omit the property for a plain DM. An explicit `undefined` is invalid. [Adapter obligations](integration.md#reply-correlation-and-delivery)
+
 The response is `200` with `{"outcome":"started","runId":"<uuid>"}` for a matching comment that starts a run. The `busy`, `buffered`, and `accepted` outcomes carry the affected run ID. The `ignored` and `duplicate` outcomes return `"runId":null`. Use the actual timestamp from the provider on each event. An inbound message dated before the prompt attempt or after the receipt cannot advance the flow.
 
 `GET /v1/tenants/{tenantId}/status?runId={uuid}` accepts a control token and returns the run for the bound tenant and account.
@@ -118,7 +120,7 @@ The output includes the run state and outbox statuses. This response omits store
 }
 ```
 
-History includes comments that started opted-in runs and in-window replies received while those runs are waiting for an email. The first qualifying response received during a prompt attempt becomes visible after the provider accepts the prompt. A confirmed non-send discards its staged response. Each record expires 30 days after its provider timestamp. The worker deletes expired records in batches.
+History includes comments that started opted-in runs and DMs that pass the reply correlation checks while those runs are waiting for an email. The first qualifying response received during a prompt attempt becomes visible after the provider accepts the prompt. A confirmed non-send discards its staged response. Each record expires 30 days after its provider timestamp. The worker deletes expired records in batches.
 
 The response is `200` with up to 50 unexpired interactions, sorted by provider timestamp and then event ID, both descending. `truncated` is true when more interactions are available. Comments can have a null `postId`. Inbound messages always have a null `postId`. Each excerpt contains up to 500 Unicode code points, with tokens containing `@` replaced by `[redacted]`. Treat the lookup response as private customer data. `runState` reflects the current run state. `emailAccepted` is true for the DM that supplied the captured address.
 
