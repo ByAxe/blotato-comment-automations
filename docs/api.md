@@ -8,7 +8,7 @@ From the repository root, start the disposable sandbox and wait for the API to r
 
 ```sh
 docker compose -p comment-demo --profile sandbox up --build -d api worker
-curl -fsS --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:3030/healthz
+curl -fsS --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1:3030/healthz
 ```
 
 Run the example to publish the rule, submit a comment, wait for the email prompt, and reply. It generates distinct event and object IDs, uses the same participant for both events, and takes each timestamp when the event is sent. The script runs in the API container so it can also inspect the private recording provider.
@@ -56,11 +56,15 @@ Use `Content-Type: application/json` on requests with a body. A JSON body is lim
 }
 ```
 
+The optional `postId` field limits the rule to one provider post. Omit it or send `null` to match comments on any supported post of the account. Use a nonblank string up to 255 characters for a specific post. IDs match exactly, including case and surrounding whitespace.
+
 The response is `201` with `{"versionId":"<uuid>"}`. The first version enables the automation. Later versions apply to future runs and preserve the current enabled flag. Every successful POST creates a new revision.
 
 `PUT /v1/tenants/{tenantId}/automations/{accountId}/enabled` accepts a control token and `{"enabled":false}` or `{"enabled":true}`. Returns `204` for an existing automation. Disabling stops new runs. Existing runs continue on their captured version.
 
 `POST /v1/tenants/{tenantId}/adapter/events` accepts an adapter token and a normalized comment or inbound message. Supply the provider's event and object IDs and UTC timestamp serialized as `YYYY-MM-DDTHH:mm:ss.sssZ`. The object ID identifies the source comment for `kind: "comment"` and the inbound message for `kind: "message"`. The participant ID identifies the same commenter across those events. The optional `isSelf` field defaults to false. Use the adapter's verified self/echo classification in production.
+
+For comments, supply the provider's source post ID as `postId` when available. Use the same format as the publish field. A missing, null, or different post ID yields `ignored` when the rule is scoped to a particular post. Omit `postId` on inbound messages.
 
 The response is `200` with `{"outcome":"started","runId":"<uuid>"}` for a matching comment that starts a run. The `busy`, `buffered`, and `accepted` outcomes carry the affected run ID. The `ignored` and `duplicate` outcomes return `"runId":null`. Use the actual timestamp from the provider on each event. An inbound message dated before the prompt attempt or after the receipt cannot advance the flow.
 

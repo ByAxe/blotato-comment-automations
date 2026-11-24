@@ -31,7 +31,7 @@ Start the API, delivery worker, PostgreSQL, and recording provider. The sandbox 
 
 ```sh
 docker compose -p comment-demo --profile sandbox up --build -d api worker
-curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:3030/healthz
+curl --fail --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1:3030/healthz
 ```
 
 The walkthrough publishes the pricing rule, submits a comment and an email, then checks the three receipts at the provider. It uses the sandbox’s built-in account and credentials. [Run the pricing flow](docs/api.md#run-the-pricing-flow)

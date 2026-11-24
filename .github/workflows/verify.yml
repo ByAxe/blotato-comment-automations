@@ -18,7 +18,7 @@ jobs:
       - name: Start the documented HTTP sandbox
         run: |
           docker compose -p comment-demo --profile sandbox up --build -d api worker
-          curl --fail --retry 15 --retry-connrefused --retry-delay 1 http://127.0.0.1:3030/healthz
+          curl --fail --retry 15 --retry-all-errors --retry-delay 1 http://127.0.0.1:3030/healthz
           docker compose -p comment-demo --profile sandbox exec -T api node scripts/try-pricing.mjs
       - name: Remove disposable containers
         if: always()
