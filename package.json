@@ -1,0 +1,28 @@
+{
+  "name": "blotato-comment-automations",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "migrate": "node scripts/migrate.mjs",
+    "api": "node dist/scripts/server.js",
+    "worker": "node dist/scripts/worker.js",
+    "test": "npm run build && node --test agents/runner.test.mjs && node scripts/disposable-db.mjs test",
+    "e2e": "npm run build && node scripts/disposable-db.mjs e2e",
+    "demo": "npm run build && node scripts/disposable-db.mjs demo",
+    "load": "npm run build && node scripts/disposable-db.mjs load",
+    "agents:plan": "node agents/run.mjs plan"
+  },
+  "dependencies": {
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.3",
+    "@types/pg": "8.15.5",
+    "typescript": "5.9.3"
+  }
+}
