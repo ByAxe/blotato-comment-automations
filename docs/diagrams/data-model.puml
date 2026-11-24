@@ -27,6 +27,8 @@ class automation_versions {
   revision : integer
   post_id : text [0..1]
   link_url : text
+  collect_participant_context : boolean
+  returning_email_prompt : text [0..1]
 }
 
 class inbox {
@@ -44,6 +46,18 @@ class runs {
   comment_id : text
   state : text
   started_at : timestamptz
+  collect_participant_context : boolean
+}
+
+class participant_interactions {
+  tenant_id : text
+  account_id : text
+  participant_id : text
+  event_id : text
+  run_id : uuid
+  occurred_at : timestamptz
+  excerpt : text
+  pending_prompt : boolean
 }
 
 class buffered_emails {
@@ -81,7 +95,6 @@ class delivery_reconciliations {
   decision : text
 }
 
-inbox -[hidden]right- automations
 automations "1" -down- "0..*" automation_versions : published versions
 automations "0..1" -down- "0..1" automation_versions : current version
 automations "1" -up- "0..1" delivery_lanes : scheduling lane
@@ -90,5 +103,8 @@ automation_versions "1" -down- "0..*" runs : pinned version
 runs "1" -left- "0..1" buffered_emails : buffered address
 runs "1" -right- "0..1" leads : captured address
 runs "1" -down- "0..3" outbox : requested actions
+participant_interactions "0..*" -up- "1" runs : retained excerpts
+participant_interactions "0..1" -left- "1" inbox : source receipt
+participant_interactions -[hidden]right- outbox
 outbox "1" -down- "0..*" delivery_reconciliations : decisions
 @enduml

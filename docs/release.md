@@ -3,7 +3,7 @@
 Push a new `vMAJOR.MINOR.PATCH` tag on the commit to release. The tag must match the version in `package.json`. The [Release workflow](../.github/workflows/release.yml) runs the same verification job as branch CI against the tagged source.
 
 1. Build the minimal runtime as one Linux amd64 and arm64 OCI image index. Push it to GHCR under a staging tag and record its digest.
-2. Pull that digest on fresh native runners for both architectures. Apply migrations and start the API, worker and HTTP recording provider with a disposable PostgreSQL 17 instance. The smoke test checks the running image identity, authorization, duplicate events, restart recovery and the three recorded actions.
+2. Pull that digest on fresh native runners for both architectures. Apply migrations and start the API, worker and HTTP recording provider with a disposable PostgreSQL 17 instance. The smoke test checks image identity, authorization, duplicate events, restart recovery and three recorded actions. It also checks that an authorized control caller can read a redacted participant history and erase it.
 3. Export both verified platform images and load them back to confirm their image IDs. Promote the tested index to the version and full commit SHA tags. Upload both archives and `SHA256SUMS`, confirm their checksums on GitHub, and publish the release.
 
 The release notes record the source commit, workflow run and immutable image digest. The GHCR version and SHA tags are lookup names. Use the digest for deployment. The release job records whether an anonymous GHCR pull succeeded. [GitHub Releases](https://github.com/ByAxe/blotato-comment-automations/releases) provides public image archives even when the GHCR package requires authentication.

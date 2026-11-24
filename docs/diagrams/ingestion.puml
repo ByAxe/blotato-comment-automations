@@ -39,14 +39,14 @@ else Valid external event
     alt Inbound comment
       api -> db : Match enabled rule by keyword\nand optional post ID
       alt Match, no active run
-        api -> db : Pin version, create run\nand enqueue public reply
+        api -> db : Pin version, create run,\nrecord trigger if opted in\nand enqueue public reply
       else Match, active run
         api -> api : Outcome busy with run ID
       else No match
         api -> api : Outcome ignored
       end
     else Inbound message
-      api -> db : Evaluate reply window\nBuffer or capture valid email
+      api -> db : Evaluate reply window\nBuffer or capture valid email\nRecord eligible context if opted in
     end
   else Duplicate or future-dated event
     api -> api : Outcome duplicate or ignored

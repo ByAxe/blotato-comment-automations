@@ -9,7 +9,7 @@ A customer publishes a keyword, a public reply, an email prompt and a destinatio
 | Operation | How the database commits it | What a caller can safely do afterward |
 | --- | --- | --- |
 | Publish | Lock the account's rule, append a version, update its current pointer. | New runs see the new text and URL. A run already in progress uses its pinned version. |
-| Receive a comment | Lock the conversation, deduplicate the delivery and social object, match the enabled definition, insert a run and its public-reply intent. | The ingress API acknowledges the event. Redelivery finds the same identity even if the original HTTP response was lost. |
+| Receive a comment | Lock the conversation, deduplicate the delivery and social object, match the enabled definition, and insert the run, any opted-in trigger excerpt and the public-reply intent. | The ingress API acknowledges the event. Redelivery finds the same identity even if the original HTTP response was lost. |
 | Send an action | Lock the next eligible account queue, claim one due action, rotate the account's turn and commit. A prompt opens its response window in a second, fenced transaction. Call the adapter outside the transaction. In a new transaction, verify the token and settle the result together with the next state and intent. | Other workers can claim independent work during the HTTP call. Only the current lease can advance the run. |
 | Receive an email | Lock the conversation, validate and consume at most one qualifying response, save the lead, set the next state and enqueue the link together. | A second response cannot create another link intent. |
 | Resolve an unknown send | Lock the action in the owning tenant, check its attempt number, record the operator and evidence, then apply the decision. | A stale resolution cannot authorize a later attempt. |
@@ -23,6 +23,12 @@ These operations use PostgreSQL's default read-committed isolation. Advisory tra
 **The provider accepted a send and the worker disappeared.** The database can guarantee one *intent*. It cannot undo a public reply, nor establish from a timeout whether anyone saw it. An expired lease therefore enters the same uncertain state as a lost provider acknowledgement. An operator with a provider receipt can settle the original action. Requeueing requires evidence of absence and evidence that the original request can no longer take effect. If neither is available the action can stay held or be abandoned with an audit record. [Recovery procedure](delivery-recovery.md)
 
 The configured public message says `Sent you a DM!` before the private send. Preserving that sequence means a commenter can see the acknowledgement even when the prompt subsequently fails. The status endpoint shows both outcomes. A customer who wants different wording can publish a new version. Provider acceptance is the strongest delivery signal represented here. [Integration and provider windows](integration.md)
+
+## Context across conversations
+
+An opted-in run can retain its trigger and eligible replies as a typed timeline for the same tenant, connected account and participant. The ingestion and prompt-settlement transactions record excerpts with their original event identities. A buffered reply becomes context when the provider accepts the prompt attempt. The control API reads context within the same account boundary. Deletion acquires the conversation lock before erasing history and turning off collection for the active run. [Context records and retention](data.md#participant-context) · [Context API](api.md#participant-context)
+
+When the worker opens the prompt attempt’s wait, it selects the copy from the run’s pinned version under the conversation lock. It uses the optional returning copy if a different run retained an unexpired DM that supplied an email and occurred no later than the new trigger comment. A fresh qualifying reply inside this run’s wait remains the condition for sending the link. Stored excerpts never supply content for an outbound message.
 
 ## Why PostgreSQL, and when to adopt Temporal
 

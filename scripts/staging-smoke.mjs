@@ -66,7 +66,7 @@ async function request(url, expected, token, body) {
     signal: AbortSignal.timeout(3_000),
   });
   assert.equal(response.status, expected, `${new URL(url).pathname} returned HTTP ${response.status}`);
-  return response.json();
+  return response.status === 204 ? undefined : response.json();
 }
 
 async function waitFor(description, condition) {
@@ -87,6 +87,7 @@ async function exercise(provider) {
     keyword: 'pricing',
     publicReply: 'Sent you a DM!',
     emailPrompt: 'What email address should I use?',
+    collectParticipantContext: true,
     linkUrl: 'https://example.org/pricing',
   };
   const event = (kind, objectId, text) => ({
@@ -131,6 +132,18 @@ async function exercise(provider) {
     kinds.map((kind) => [kind, 'sent', 1]).sort(),
   );
   assert.doesNotMatch(JSON.stringify(completed), /buyer@example\.org/);
+
+  const historyUrl = `${apiPath()}/automations/${accountId}/participant-context`;
+  const person = { participantId };
+  await request(historyUrl, 403, adapterToken, person);
+  const history = await request(historyUrl, 200, controlToken, person);
+  assert.equal(history.interactions.length, 3);
+  assert.deepEqual(history.runs.map((run) => run.runId), [started.runId]);
+  assert.deepEqual(history.runs[0].actions.map((action) => action.kind), kinds);
+  assert.ok(history.runs[0].actions.every((action) => action.status === 'sent' && action.acceptedAt));
+  assert.doesNotMatch(JSON.stringify(history), /buyer@example\.org/);
+  await request(`${historyUrl}/deletions`, 204, controlToken, person);
+  assert.deepEqual(await request(historyUrl, 200, controlToken, person), { interactions: [], runs: [], truncated: false });
 
   const { total, records } = await request(`${provider}/records`, 200, providerToken);
   assert.equal(total, 3);

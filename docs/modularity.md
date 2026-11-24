@@ -16,7 +16,7 @@ The API and worker run in separate processes and share PostgreSQL. The provider 
 
 The plugin found that the initial claim query chose one lane before trying to lock its head action. A transaction holding that action lock could make the worker report an empty queue while a quiet account had work ready. The revised query locks both the lane and its head while selecting the candidate, so PostgreSQL can skip a locked pair and select another account in the same pass. Only a successful claim advances the turn. The regression test holds the oldest action lock from another connection and requires one worker call to dispatch for the second account. [Worker](../src/delivery.ts) · [Fairness tests](../test/fairness.test.ts)
 
-A separate source inspection found a startup dependency. An older database could pass readiness even though intake needed the new post-scope columns and the worker needed delivery lanes. The shared readiness query now checks those capabilities. The upgrade test checks an empty schema, migrations through 003 and 004, and the current schema after 005. [Readiness](../src/runtime.ts) · [Upgrade check](../test/post-scope.test.ts)
+A separate source inspection found a startup dependency. An older database could pass readiness even though intake needed the new post-scope columns and the worker needed delivery lanes. The shared readiness query checks those capabilities and the participant context schema. The upgrade test expects readiness only after migration 006 and verifies that earlier versions and runs retain account-wide targeting with context collection off. [Readiness](../src/runtime.ts) · [Upgrade check](../test/post-scope.test.ts)
 
 ## Evidence and assumptions
 

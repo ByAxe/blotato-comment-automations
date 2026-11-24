@@ -1,6 +1,6 @@
 # Capacity, scaling, and recovery
 
-The two workloads exercise competing PostgreSQL consumers and record accepted simulator effects. See the production sizing model for traffic projections, provider budget assumptions, and storage estimates. [Production sizing model](storage-and-sizing.md)
+The two workloads exercise competing PostgreSQL consumers and record accepted simulator effects with participant context collection off. The historical results below predate the participant context migration. An opted-in workload adds interaction writes, returning-prompt lookups, context reads, and expiry cleanup. [Production sizing model](storage-and-sizing.md) · [Participant context](data.md#participant-context)
 
 ## Reproduce the PostgreSQL workload
 

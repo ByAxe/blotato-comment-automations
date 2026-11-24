@@ -30,19 +30,19 @@ gateway -->> worker : Acceptance receipt
 worker -> db : Fence lease and settle\nEnqueue prompt\nCommit
 
 worker -> db : Claim prompt\nRotate lane and commit
-worker -> db : Fence lease\nStart 24-hour wait\nCommit
+worker -> db : Fence lease\nStart 24-hour wait\nSelect prompt copy\nCommit
 worker -> gateway : Send email prompt
 opt Early DM before prompt settlement
   gateway -> api : POST inbound DM
-  api -> db : Buffer first valid email\nCommit
+  api -> db : Buffer first valid email\nStage opt-in excerpt\nCommit
   api -->> gateway : buffered
 end
 gateway -->> worker : Acceptance receipt
-worker -> db : Fence lease and settle\nCapture buffer or wait\nCommit
+worker -> db : Fence lease and settle\nCapture buffer and\nconfirm excerpt, or wait\nCommit
 
 opt No buffered email and the wait is open
   gateway -> api : POST qualifying DM
-  api -> db : Capture email\nEnqueue final DM\nCommit
+  api -> db : Capture email\nRetain opt-in excerpt\nEnqueue final DM\nCommit
   api -->> gateway : accepted
 end
 

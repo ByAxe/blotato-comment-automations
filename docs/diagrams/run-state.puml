@@ -22,7 +22,7 @@ state "Active run" as active #F8FAFC {
   state "link_pending" as link
   [*] --> reply
   reply --> prompt : Public reply accepted\n/ enqueue prompt
-  prompt --> wait : Prompt accepted\n[no buffered email]
+  prompt --> wait : Prompt accepted\n[no buffer, wait open]
   prompt --> link : Prompt accepted\n[buffered email]\n/ capture and enqueue link
   wait --> link : Qualifying DM\n/ capture and enqueue link
 }
@@ -32,6 +32,7 @@ state failed #F9E6E6
 [*] --> active : / pin version and enqueue reply
 link --> completed : Link accepted
 wait --> expired : Reply wait elapsed
+prompt --> expired : Prompt accepted\n[no buffer, wait elapsed]
 active --> expired : Send cutoff reached\n[known unsent]
 active --> failed : Delivery ends in failure
 @enduml
