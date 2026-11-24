@@ -217,9 +217,11 @@ test('the HTTP service resumes the Instagram pricing flow after both processes r
     return JSON.parse(responseBody) as T;
   }
 
-  const publish = (configuration: typeof config, token: string, status: number) =>
-    request<{ versionId: string }>(`${tenantPath}/automations`, token, status, configuration);
-  const ingest = (event: object) => request<EventResult>(`${tenantPath}/adapter/events`, adapterToken, 200, event);
+  const publishPath = `${tenantPath}/automations`;
+  const ingestPath = `${tenantPath}/adapter/events`;
+  const publish = (configuration: typeof config & { postId?: string | null }, token: string, status: number) =>
+    request<{ versionId: string }>(publishPath, token, status, configuration);
+  const ingest = (event: object) => request<EventResult>(ingestPath, adapterToken, 200, event);
   const status = (runId: string) => request<Status>(`${tenantPath}/status?runId=${runId}`, controlToken, 200);
 
   function expectState(runId: string, state: string) {
@@ -329,6 +331,37 @@ test('the HTTP service resumes the Instagram pricing flow after both processes r
     const requestedIds = provider.requests.map(({ id }) => id);
     assert.equal(new Set(requestedIds).size, 3);
     assert.deepEqual(provider.acceptedIds, requestedIds);
+
+    const postId = 'Target-Instagram-Post';
+    const scopedComment = (objectId: string, sourcePostId?: string | null) => ({
+      ...message(objectId, 'pricing'), kind: 'comment', postId: sourcePostId,
+    });
+    assert.deepEqual(await request(publishPath, controlToken, 400, { ...config, postId: 123 }), {
+      error: 'invalid_request',
+    });
+    assert.ok((await publish({ ...config, postId }, controlToken, 201)).versionId);
+    for (const comment of [
+      scopedComment('missing-post'),
+      scopedComment('unknown-post', null),
+      scopedComment('other-post', postId.toLowerCase()),
+    ]) {
+      assert.deepEqual(await ingest(comment), { outcome: 'ignored', runId: null });
+    }
+    assert.deepEqual(await request(ingestPath, adapterToken, 400, {
+      ...message('dm-with-post-id', 'buyer@example.org'), postId: null,
+    }), { error: 'invalid_request' });
+
+    const scoped = await ingest(scopedComment('matching-post', postId));
+    assert.equal(scoped.outcome, 'started');
+    assert.ok(scoped.runId);
+    await expectState(scoped.runId, 'waiting');
+    assert.deepEqual(
+      provider.requests.slice(requestedIds.length).map(({ runId, commentId, kind }) => [runId, commentId, kind]),
+      [
+        [scoped.runId, 'matching-post', 'comment_reply'],
+        [scoped.runId, 'matching-post', 'email_prompt'],
+      ],
+    );
   } catch (error) {
     const providerRequests = provider.requests.map(({ id, kind, sendBefore }) => ({ id, kind, sendBefore }));
     const statusDetails = lastStatus && { state: lastStatus.state, actions: lastStatus.actions };

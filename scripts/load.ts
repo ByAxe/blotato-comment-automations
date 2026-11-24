@@ -1,5 +1,6 @@
 import { availableParallelism } from 'node:os';
 import { performance } from 'node:perf_hooks';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
 import pg from 'pg';
 import { SimulatedAdapter, type ActionKind } from '../src/adapter.js';
@@ -98,19 +99,28 @@ async function drain(db: pg.Pool, adapter: SimulatedAdapter, concurrency: number
   const samples: number[] = [];
   const workerSends = Array.from({ length: concurrency }, () => 0);
   const startedAt = performance.now();
+  let lastSendAt = startedAt;
+  let idlePolls = 0;
   await runParallel(workerSends.map((_, worker) => worker), concurrency, async worker => {
-    for (;;) {
+    while (samples.length < expectedSends) {
       const before = performance.now();
       const result = await deliverOne(db, adapter);
-      if (result === 'idle') return;
+      if (result === 'idle') {
+        // SKIP LOCKED may find no claimable row while another worker holds one.
+        idlePolls++;
+        requireCondition(performance.now() - lastSendAt < 5_000, 'The drain made no progress for five seconds.');
+        if (samples.length < expectedSends) await delay(2);
+        continue;
+      }
       requireCondition(result === 'sent', 'A simulated delivery did not finish with a receipt.');
-      samples.push(performance.now() - before);
+      lastSendAt = performance.now();
+      samples.push(lastSendAt - before);
       workerSends[worker] = (workerSends[worker] ?? 0) + 1;
       requireCondition(samples.length <= expectedSends, 'Workers exceeded the expected number of actions.');
     }
   });
   requireCondition(samples.length === expectedSends, 'Workers did not send every expected action.');
-  return { ...measurement(startedAt, samples), workerSends };
+  return { ...measurement(startedAt, samples), workerSends, idlePolls };
 }
 
 type RunRow = {
@@ -203,7 +213,7 @@ async function main() {
     const links = await drain(db, adapter, scenario.deliveryWorkers, n);
 
     stage = 'durable and simulated effect checks';
-    const [totals, outbox] = await Promise.all([
+    const [totals, outbox, storage] = await Promise.all([
       db.query<{ completed: number; inbox: number; leads: number; buffered: number }>(`
         SELECT (SELECT count(*)::int FROM runs WHERE state = 'completed') AS completed,
                (SELECT count(*)::int FROM inbox) AS inbox,
@@ -214,6 +224,12 @@ async function main() {
         SELECT id, run_id, kind, status, attempts, provider_id,
                extract(epoch FROM first_attempt_at - created_at)::double precision * 1000 AS queue_ms
         FROM outbox
+      `),
+      db.query<{ relation: string; table_bytes: number; index_bytes: number; total_bytes: number }>(`
+        SELECT relation, pg_table_size(relation::regclass)::double precision AS table_bytes,
+               pg_indexes_size(relation::regclass)::double precision AS index_bytes,
+               pg_total_relation_size(relation::regclass)::double precision AS total_bytes
+        FROM unnest(ARRAY['inbox', 'runs', 'outbox', 'leads']) AS relations(relation)
       `),
     ]);
     const counts = totals.rows[0];
@@ -253,6 +269,7 @@ async function main() {
       counts: { ...counts, outbox: outbox.rows.length, simulatedSends: adapter.sent.length },
       commentIngress: commentsResult, repliesAndPrompts: initialSends, responseIngress: responsesResult, links,
       enqueueToFirstAttemptMs: Object.fromEntries(actionKinds.map(kind => [kind, latencyMs(queueSamples[kind])])),
+      relationSizes: storage.rows,
     }, null, 2));
   } finally {
     await db.end();

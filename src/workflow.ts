@@ -5,6 +5,7 @@ export interface DefinitionInput {
   tenantId: string;
   accountId: string;
   keyword: string;
+  postId?: string | null;
   publicReply: string;
   emailPrompt: string;
   linkUrl: string;
@@ -17,6 +18,7 @@ export interface SocialEvent {
   platform: 'instagram';
   eventId: string;
   objectId: string;
+  postId?: string | null;
   kind: 'comment' | 'message';
   text: string;
   occurredAt: Date;
@@ -62,6 +64,10 @@ function requiredString(value: string, limit: number): string {
   return value;
 }
 
+function optionalPostId(value: string | null | undefined): string | null {
+  return value == null ? null : requiredString(value, 255);
+}
+
 function normalized(text: string): string {
   return text.trim().toLowerCase();
 }
@@ -87,6 +93,7 @@ export async function publish(pool: Pool, input: DefinitionInput): Promise<strin
   requiredString(tenantId, 255);
   requiredString(accountId, 255);
   const keyword = normalized(requiredString(input.keyword, 128));
+  const postId = optionalPostId(input.postId);
   const reply = requiredString(input.publicReply, 2000).trim();
   const prompt = requiredString(input.emailPrompt, 2000).trim();
   const link = requiredString(input.linkUrl, 2048).trim();
@@ -105,10 +112,10 @@ export async function publish(pool: Pool, input: DefinitionInput): Promise<strin
       'SELECT 1 FROM automations WHERE tenant_id=$1 AND account_id=$2 FOR UPDATE', [tenantId, accountId],
     );
     const created = await client.query<{ id: string }>(
-      `INSERT INTO automation_versions (tenant_id, account_id, revision, keyword, public_reply, email_prompt, link_url)
-       SELECT $1, $2, COALESCE(max(revision),0)+1, $3, $4, $5, $6
+      `INSERT INTO automation_versions (tenant_id, account_id, revision, keyword, public_reply, email_prompt, link_url, post_id)
+       SELECT $1, $2, COALESCE(max(revision),0)+1, $3, $4, $5, $6, $7
        FROM automation_versions WHERE tenant_id=$1 AND account_id=$2 RETURNING id`,
-      [tenantId, accountId, keyword, reply, prompt, link],
+      [tenantId, accountId, keyword, reply, prompt, link, postId],
     );
     const versionId = created.rows[0]!.id;
     await client.query(
@@ -174,12 +181,13 @@ async function expireIfDue(client: PoolClient, runId: string): Promise<boolean> 
 }
 
 async function handleComment(
-  client: PoolClient, event: SocialEvent, active: Run | undefined,
+  client: PoolClient, event: SocialEvent, active: Run | undefined, postId: string | null,
 ): Promise<IngestResult> {
   const version = (await client.query<{ id: string }>(
     `SELECT v.id FROM automations a JOIN automation_versions v ON v.id=a.current_version_id
-     WHERE a.tenant_id=$1 AND a.account_id=$2 AND a.enabled AND v.keyword=$3`,
-    [event.tenantId, event.accountId, normalized(event.text)],
+     WHERE a.tenant_id=$1 AND a.account_id=$2 AND a.enabled AND v.keyword=$3
+       AND (v.post_id IS NULL OR v.post_id=$4)`,
+    [event.tenantId, event.accountId, normalized(event.text), postId],
   )).rows[0];
   if (!version) return { outcome: 'ignored', runId: null };
   if (active) return { outcome: 'busy', runId: active.id };
@@ -222,6 +230,10 @@ export async function ingest(pool: Pool, event: SocialEvent): Promise<IngestResu
   for (const id of [event.tenantId, event.accountId, event.participantId, event.eventId, event.objectId]) {
     requiredString(id, 255);
   }
+  if (event.kind === 'message' && Object.hasOwn(event, 'postId')) {
+    throw new TypeError('Only a comment can have a post ID.');
+  }
+  const postId = optionalPostId(event.postId);
   if (event.platform !== 'instagram' || event.isSelf) return { outcome: 'ignored', runId: null };
   if (!['message','comment'].includes(event.kind) || !(event.occurredAt instanceof Date)
       || !Number.isFinite(event.occurredAt.getTime()) || typeof event.text !== 'string'
@@ -231,9 +243,9 @@ export async function ingest(pool: Pool, event: SocialEvent): Promise<IngestResu
   return transaction(pool, async client => {
     await lockConversation(client, event.tenantId, event.accountId, event.participantId);
     const receipt = (await client.query<{ received_at: Date }>(
-      `INSERT INTO inbox (tenant_id,account_id,event_id,kind,object_id,occurred_at) VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO inbox (tenant_id,account_id,event_id,kind,object_id,occurred_at,post_id) VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT DO NOTHING RETURNING received_at`,
-      [event.tenantId, event.accountId, event.eventId, event.kind, event.objectId, event.occurredAt],
+      [event.tenantId, event.accountId, event.eventId, event.kind, event.objectId, event.occurredAt, postId],
     )).rows[0];
     if (!receipt) return { outcome: 'duplicate', runId: null };
     if (event.occurredAt > receipt.received_at) return { outcome: 'ignored', runId: null };
@@ -246,7 +258,7 @@ export async function ingest(pool: Pool, event: SocialEvent): Promise<IngestResu
       await expireIfDue(client, active.id);
       active = undefined;
     }
-    if (event.kind === 'comment') return handleComment(client, event, active);
+    if (event.kind === 'comment') return handleComment(client, event, active, postId);
     return handleMessage(client, event, active, receipt.received_at);
   });
 }

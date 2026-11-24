@@ -9,7 +9,7 @@ import { migrate } from './migrate.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const [mode, ...args] = process.argv.slice(2);
-if (!['test', 'e2e', 'demo', 'load', 'verify'].includes(mode)) throw new Error('Choose test, e2e, demo, load, or verify.');
+if (!['test', 'e2e', 'demo', 'load', 'skew', 'verify'].includes(mode)) throw new Error('Choose test, e2e, demo, load, skew, or verify.');
 
 function run(program, argv, env = process.env) {
   return new Promise((resolve, reject) => {
@@ -48,6 +48,10 @@ async function suite(adminUrl) {
     if (mode === 'load' || mode === 'verify') {
       const size = mode === 'verify' ? ['--tenants', '3', '--participants', '12'] : args;
       await isolated(admin, adminUrl, ['dist/scripts/load.js', ...size]);
+    }
+    if (mode === 'skew' || mode === 'verify') {
+      const size = mode === 'verify' ? ['--hot-comments', '64', '--adapter-ms', '1'] : args;
+      await isolated(admin, adminUrl, ['dist/scripts/skew.js', ...size]);
     }
   } finally {
     await admin.end();

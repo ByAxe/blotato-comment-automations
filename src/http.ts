@@ -56,6 +56,10 @@ function checkAccount(requested: string, access: DemoAccess): void {
   if (requested !== access.accountId) throw new HttpError(403, 'forbidden');
 }
 
+function postIdField(body: Record<string, unknown>): string | null {
+  return body.postId === undefined || body.postId === null ? null : stringField(body, 'postId', 255);
+}
+
 async function checkedWorkflowRequest<T>(operation: Promise<T>): Promise<T> {
   try {
     return await operation;
@@ -108,7 +112,7 @@ export function createHttpServer(pool: Pool, access: DemoAccess): Server {
 
     if (req.method === 'POST' && resource.join('/') === 'automations') {
       authorize(req, tenantId, 'control');
-      const body = await readBody(req, ['accountId', 'keyword', 'publicReply', 'emailPrompt', 'linkUrl']);
+      const body = await readBody(req, ['accountId', 'keyword', 'publicReply', 'emailPrompt', 'linkUrl', 'postId']);
       const accountId = stringField(body, 'accountId', 255);
       checkAccount(accountId, access);
       const versionId = await checkedWorkflowRequest(publish(pool, {
@@ -118,6 +122,7 @@ export function createHttpServer(pool: Pool, access: DemoAccess): Server {
         publicReply: stringField(body, 'publicReply', 2_000),
         emailPrompt: stringField(body, 'emailPrompt', 2_000),
         linkUrl: stringField(body, 'linkUrl', 2_048),
+        postId: postIdField(body),
       }));
       json(res, 201, { versionId });
       return;
@@ -141,14 +146,15 @@ export function createHttpServer(pool: Pool, access: DemoAccess): Server {
     if (req.method === 'POST' && resource.join('/') === 'adapter/events') {
       authorize(req, tenantId, 'adapter');
       const body = await readBody(req, [
-        'accountId', 'participantId', 'eventId', 'objectId',
+        'accountId', 'participantId', 'eventId', 'objectId', 'postId',
         'kind', 'text', 'occurredAt', 'platform', 'isSelf',
       ]);
       const accountId = stringField(body, 'accountId', 255);
       checkAccount(accountId, access);
       const { kind, platform, isSelf = false } = body;
       if ((kind !== 'comment' && kind !== 'message') ||
-          platform !== 'instagram' || typeof isSelf !== 'boolean') {
+          platform !== 'instagram' || typeof isSelf !== 'boolean' ||
+          (kind === 'message' && Object.hasOwn(body, 'postId'))) {
         invalidRequest();
       }
       const result = await checkedWorkflowRequest(ingest(pool, {
@@ -158,6 +164,7 @@ export function createHttpServer(pool: Pool, access: DemoAccess): Server {
         eventId: stringField(body, 'eventId', 255),
         objectId: stringField(body, 'objectId', 255),
         kind,
+        ...(kind === 'comment' && { postId: postIdField(body) }),
         text: stringField(body, 'text', 16_000, true),
         occurredAt: utcDate(body.occurredAt),
         platform,

@@ -40,11 +40,29 @@ export function openPool(): Pool {
   return pool;
 }
 
-export async function databaseReady(pool: Pool): Promise<boolean> {
-  const result = await pool.query<{ ready: boolean }>(`
+export async function databaseReady(db: Pick<Pool, 'query'>): Promise<boolean> {
+  const result = await db.query<{ ready: boolean }>(`
+    WITH required_columns(relation_name, column_name) AS (
+      VALUES ('outbox', 'send_before'), ('outbox', 'sent_at'),
+             ('outbox', 'tenant_id'), ('outbox', 'account_id'),
+             ('delivery_lanes', 'pending_count'), ('delivery_lanes', 'turn'),
+             ('automation_versions', 'post_id'), ('inbox', 'post_id')
+    )
     SELECT to_regclass('automations') IS NOT NULL
-       AND to_regclass('outbox') IS NOT NULL
-       AND to_regclass('delivery_cooldowns') IS NOT NULL AS ready
+       AND to_regclass('runs') IS NOT NULL
+       AND to_regclass('buffered_emails') IS NOT NULL
+       AND to_regclass('leads') IS NOT NULL
+       AND to_regclass('delivery_cooldowns') IS NOT NULL
+       AND to_regclass('delivery_turn_seq') IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM required_columns required
+         WHERE NOT EXISTS (
+           SELECT 1 FROM pg_catalog.pg_attribute column_info
+           WHERE column_info.attrelid = to_regclass(required.relation_name)
+             AND column_info.attname = required.column_name
+             AND NOT column_info.attisdropped
+         )
+       ) AS ready
   `);
   return result.rows[0]?.ready === true;
 }

@@ -15,6 +15,7 @@
     "e2e": "npm run build && node scripts/disposable-db.mjs e2e",
     "demo": "npm run build && node scripts/disposable-db.mjs demo",
     "load": "npm run build && node scripts/disposable-db.mjs load",
+    "skew": "npm run build && node scripts/disposable-db.mjs skew",
     "agents:plan": "node agents/run.mjs plan"
   },
   "dependencies": {
