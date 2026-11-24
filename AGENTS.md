@@ -1,0 +1,7 @@
+# Working in this repository
+
+- Start with [requirements and acceptance](docs/requirements.md) for the behavior the change affects. The pricing workflow runs through normalized inbound events, PostgreSQL state transitions and an outbox, then the social adapter. Keep that runtime deterministic.
+- Apply [change-comment-workflow](.agents/skills/change-comment-workflow/SKILL.md) for trigger, wait, capture and transition changes. Apply [reconcile-social-send](.agents/skills/reconcile-social-send/SKILL.md) when an outbound attempt might already have reached the provider.
+- Use synthetic accounts and the recording adapter for development. An enabled rule authorizes its configured runtime effects. When working as an agent, get explicit authorization before contacting a live provider, changing a shared database or publishing. Keep credentials, lead addresses and message bodies out of diagnostics and agent artifacts.
+- Match verification to the change. Use `npm test` for runtime or schema work and `npm run e2e` when the HTTP or restart path needs an isolated check. Use the [harness guide](docs/harness.md) for the staged check, skill evaluations and the evidence to leave with a change.
+- Report what you ran, what you observed and what would still need environment-specific verification. The code and test definitions describe expected behavior. A passing run applies to the inputs and revision tested.

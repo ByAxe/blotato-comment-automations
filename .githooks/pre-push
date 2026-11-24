@@ -1,0 +1,52 @@
+#!/bin/sh
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+checked=''
+
+check_types() (
+  snapshot=$(mktemp -d "${TMPDIR:-/tmp}/blotato-pre-push.XXXXXXXX")
+  trap 'rm -rf "$snapshot"' EXIT
+  mkdir "$snapshot/tree"
+  git archive --output="$snapshot/revision.tar" "$1"
+  tar -xf "$snapshot/revision.tar" -C "$snapshot/tree"
+
+  if [ ! -x "$root/node_modules/.bin/tsc" ] ||
+    ! cmp -s "$root/package-lock.json" "$snapshot/tree/package-lock.json"; then
+    printf '%s\n' 'Typecheck needs dependencies for the pushed revision. Run npm ci in its checkout and push again.' >&2
+    exit 1
+  fi
+  ln -s "$root/node_modules" "$snapshot/tree/node_modules"
+  cd "$snapshot/tree"
+  printf 'Typechecking pushed revision %s\n' "$1" >&2
+  "$root/node_modules/.bin/tsc" --noEmit -p tsconfig.json </dev/null
+)
+
+while IFS=' ' read -r local_ref local_oid remote_ref remote_oid; do
+  case "$remote_ref" in
+    refs/heads/*) ;;
+    *) continue ;;
+  esac
+  if [ "$local_ref" = '(delete)' ]; then
+    continue
+  fi
+  case " $checked " in
+    *" $local_oid "*) continue ;;
+  esac
+
+  base=$remote_oid
+  if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+    base=$(git hash-object -t tree /dev/null)
+  fi
+  if git diff --quiet "$base" "$local_oid" -- '*.ts' '*.tsx' '*.cts' '*.mts' tsconfig.json package.json package-lock.json; then
+    continue
+  else
+    diff_status=$?
+    if [ "$diff_status" -ne 1 ]; then
+      exit "$diff_status"
+    fi
+  fi
+
+  check_types "$local_oid"
+  checked="$checked $local_oid"
+done
