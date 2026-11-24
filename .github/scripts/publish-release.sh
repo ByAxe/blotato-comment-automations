@@ -21,16 +21,20 @@ $REGISTRY_ACCESS
 Use Node.js 22 and Docker with Compose v2. The commands below load the verified Linux amd64 archive. Set \`arch=arm64\` on an Arm host.
 
 \`\`\`sh
+(
+set -eu
 arch=amd64
 base="$repo_url/releases/download/$tag"
 archive="blotato-comment-automations-linux-\$arch.tar.gz"
 curl -fsSLO "\$base/\$archive"
 curl -fsSLO "\$base/SHA256SUMS"
-grep -F "  \$archive" SHA256SUMS | shasum -a 256 -c -
+checksum="\$(grep -F "  \$archive" SHA256SUMS)"
+printf '%s\n' "\$checksum" | shasum -a 256 -c -
 docker image load --input "\$archive"
 git clone --branch "$tag" --depth 1 "$repo_url.git"
 cd "$repo_name"
 node scripts/staging-smoke.mjs --local "$IMAGE:$tag" "$GITHUB_SHA"
+)
 \`\`\`
 
 The smoke test sends synthetic events to an isolated recording provider and removes its containers and test database. [Deployment and rollback guide]($repo_url/blob/$GITHUB_SHA/docs/release.md).

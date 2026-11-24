@@ -4,7 +4,7 @@ x-runtime: &runtime
   init: true
   read_only: true
   cap_drop: [ALL]
-  security_opt: [no-new-privileges:true]
+  security_opt: ["no-new-privileges:true"]
 
 x-database: &database
   DATABASE_URL: postgres://postgres:${STAGE_DB_PASSWORD:?Set the disposable database password}@postgres/blotato
