@@ -1,0 +1,94 @@
+x-runtime: &runtime
+  image: ${STAGE_IMAGE:?Set the verified runtime image}
+  pull_policy: never
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
+x-database: &database
+  DATABASE_URL: postgres://postgres:${STAGE_DB_PASSWORD:?Set the disposable database password}@postgres/blotato
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: blotato
+      POSTGRES_PASSWORD: ${STAGE_DB_PASSWORD:?Set the disposable database password}
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, postgres, -d, blotato]
+      interval: 2s
+      timeout: 3s
+      retries: 25
+    volumes:
+      - stage-db:/var/lib/postgresql/data
+
+  migrate:
+    <<: *runtime
+    command: [node, scripts/migrate.mjs]
+    environment: *database
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *runtime
+    command: [node, dist/scripts/server.js]
+    environment:
+      <<: *database
+      HOST: 0.0.0.0
+      DEMO_TENANT_ID: ${STAGE_TENANT_ID:?Set the synthetic tenant}
+      DEMO_ACCOUNT_ID: ${STAGE_ACCOUNT_ID:?Set the synthetic account}
+      DEMO_CONTROL_TOKEN: ${STAGE_CONTROL_TOKEN:?Set the disposable control credential}
+      DEMO_ADAPTER_TOKEN: ${STAGE_ADAPTER_TOKEN:?Set the disposable adapter credential}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/healthz').then(r => { if (!r.ok) process.exit(1) })
+      interval: 2s
+      timeout: 3s
+      retries: 25
+    ports:
+      - target: 3000
+        host_ip: 127.0.0.1
+
+  worker:
+    <<: *runtime
+    command: [node, dist/scripts/worker.js]
+    environment:
+      <<: *database
+      PROVIDER_URL: http://provider:3001/send
+      PROVIDER_TOKEN: ${STAGE_PROVIDER_TOKEN:?Set the disposable provider credential}
+      WORKER_POLL_MS: 100
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      provider:
+        condition: service_healthy
+
+  provider:
+    <<: *runtime
+    command: [node, dist/scripts/recording-provider.js]
+    environment:
+      PROVIDER_HOST: 0.0.0.0
+      PROVIDER_TOKEN: ${STAGE_PROVIDER_TOKEN:?Set the disposable provider credential}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3001/healthz').then(r => { if (!r.ok) process.exit(1) })
+      interval: 2s
+      timeout: 3s
+      retries: 25
+    ports:
+      - target: 3001
+        host_ip: 127.0.0.1
+
+volumes:
+  stage-db:

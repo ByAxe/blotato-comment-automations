@@ -1,0 +1,202 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify the tagged source
+    uses: ./.github/workflows/verify.yml
+    permissions:
+      contents: read
+
+  build:
+    name: Push runtime image for staging
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate tag and checkout
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          test "$GITHUB_REF_NAME" = "v$(jq -er '.version' package.json)"
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Sign in to GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Build and push a multi-platform OCI image
+        id: image
+        run: |
+          source .github/scripts/registry.sh
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          staging_tag="$image:staging-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          metadata="$RUNNER_TEMP/build-metadata.json"
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 --target runtime \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=${GITHUB_REF_NAME#v}" \
+            --output "type=image,name=$staging_tag,push=true,oci-mediatypes=true" \
+            --metadata-file "$metadata" .
+          pushed_digest="$(jq -er '."containerimage.digest"' "$metadata")"
+          [[ "$pushed_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "$pushed_digest" = "$(registry_digest "$staging_tag")"
+
+          # A re-run after a partial promotion must reuse the previously staged digest.
+          by_version="$(registry_digest "$image:$GITHUB_REF_NAME")"
+          by_revision="$(registry_digest "$image:sha-$GITHUB_SHA")"
+          if [[ -n "$by_version" && -n "$by_revision" && "$by_version" != "$by_revision" ]]; then
+            echo "::error::Version and revision already refer to different images."
+            exit 1
+          fi
+          digest="${by_version:-${by_revision:-$pushed_digest}}"
+          printf 'image=%s\ndigest=%s\n' "$image" "$digest" >> "$GITHUB_OUTPUT"
+
+  stage:
+    name: Deploy and smoke test (${{ matrix.arch }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}
+      PIN: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Sign in to GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Exercise the published image in disposable staging
+        run: node scripts/staging-smoke.mjs "$PIN" "$GITHUB_SHA"
+      - name: Export and read back the verified platform image
+        run: |
+          assets="$RUNNER_TEMP/release-assets"
+          mkdir -p "$assets"
+          local_ref="$IMAGE:$GITHUB_REF_NAME"
+          image_id="$(docker image inspect --format '{{.Id}}' "$PIN")"
+          test "$ARCH" = "$(docker image inspect --format '{{.Architecture}}' "$image_id")"
+          docker image tag "$image_id" "$local_ref"
+          archive="$assets/blotato-comment-automations-linux-$ARCH.tar.gz"
+          docker image save --platform "linux/$ARCH" "$local_ref" | gzip -n > "$archive"
+          docker image rm "$local_ref"
+          docker image load --input "$archive"
+          test "$image_id" = "$(docker image inspect --format '{{.Id}}' "$local_ref")"
+          printf '%s\n' "$PIN" > "$assets/runtime-$ARCH.pin"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runtime-${{ matrix.arch }}
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          overwrite: true
+          compression-level: 0
+
+  publish:
+    name: Promote and publish the GitHub release
+    needs: [build, stage]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}
+      DIGEST: ${{ needs.build.outputs.digest }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: runtime-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-assets
+      - name: Check the source tag and staged assets
+        run: |
+          refs="$(git ls-remote --tags origin "refs/tags/$GITHUB_REF_NAME" "refs/tags/$GITHUB_REF_NAME^{}")"
+          tagged_revision="$(awk '$2 ~ /\^\{\}$/ { peeled = $1 } { direct = $1 } END { print (peeled ? peeled : direct) }' <<< "$refs")"
+          test "$tagged_revision" = "$GITHUB_SHA" || {
+            echo "::error::The source tag no longer points to the staged revision."
+            exit 1
+          }
+          cd "$RUNNER_TEMP/release-assets"
+          for arch in amd64 arm64; do
+            test "$(cat "runtime-$arch.pin")" = "$IMAGE@$DIGEST"
+            test -s "blotato-comment-automations-linux-$arch.tar.gz"
+          done
+          sha256sum blotato-comment-automations-linux-{amd64,arm64}.tar.gz > SHA256SUMS
+      - name: Check whether anonymous registry pulls are available
+        id: access
+        run: |
+          anonymous_config="$(mktemp -d)"
+          trap 'rm -rf -- "$anonymous_config"' EXIT
+          if docker --config "$anonymous_config" pull "$IMAGE@$DIGEST"; then
+            echo 'description=An anonymous GHCR pull succeeded at release time.' >> "$GITHUB_OUTPUT"
+          else
+            echo 'description=The anonymous GHCR pull was unavailable at release time. The archives below are the public distribution.' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Promote the staged digest without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source .github/scripts/registry.sh
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+          for ref in "$IMAGE:$GITHUB_REF_NAME" "$IMAGE:sha-$GITHUB_SHA"; do
+            existing="$(registry_digest "$ref")"
+            if [[ -n "$existing" && "$existing" != "$DIGEST" ]]; then
+              echo "::error::$ref already points to $existing."
+              exit 1
+            fi
+            if [[ -z "$existing" ]]; then
+              docker buildx imagetools create --prefer-index=false --tag "$ref" "$IMAGE@$DIGEST"
+            fi
+            test "$(registry_digest "$ref")" = "$DIGEST"
+          done
+      - name: Publish or confirm the GitHub release and public archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REGISTRY_ACCESS: ${{ steps.access.outputs.description }}
+        run: bash .github/scripts/publish-release.sh

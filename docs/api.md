@@ -11,77 +11,13 @@ docker compose -p comment-demo --profile sandbox up --build -d api worker
 curl -fsS --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:3030/healthz
 ```
 
-Paste this block to publish the rule, submit a comment, wait for the email prompt, and reply. It generates distinct event and object IDs, uses the same participant for both events, and takes each timestamp when the event is sent. The script runs in the API container so it can also inspect the private recording provider.
+Run the example to publish the rule, submit a comment, wait for the email prompt, and reply. It generates distinct event and object IDs, uses the same participant for both events, and takes each timestamp when the event is sent. The script runs in the API container so it can also inspect the private recording provider.
 
 ```sh
-docker compose -p comment-demo --profile sandbox exec -T api node --input-type=module <<'JS'
-import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
-import { setTimeout as delay } from 'node:timers/promises';
-
-const api = 'http://127.0.0.1:3000/v1/tenants/studio';
-const accountId = 'studio-ig';
-const control = 'local-control';
-const ingress = 'local-ingress';
-const linkUrl = 'https://example.com/pricing';
-
-async function request(url, token, method = 'GET', body) {
-  const response = await fetch(url, {
-    method,
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(2_000),
-  });
-  if (!response.ok) throw new Error(method + ' ' + url + ' returned ' + response.status);
-  return response.status === 204 ? undefined : response.json();
-}
-
-const rule = await request(api + '/automations', control, 'POST', {
-  accountId, keyword: 'pricing', publicReply: 'Sent you a DM!',
-  emailPrompt: 'What email address should I use?', linkUrl,
-});
-await request(api + '/automations/' + accountId + '/enabled', control, 'PUT', { enabled: true });
-
-const participantId = randomUUID();
-function submit(kind, text) {
-  return request(api + '/adapter/events', ingress, 'POST', {
-    accountId, participantId, kind, text, platform: 'instagram',
-    eventId: randomUUID(), objectId: randomUUID(), occurredAt: new Date().toISOString(),
-  });
-}
-
-const comment = await submit('comment', 'pricing');
-assert.equal(comment.outcome, 'started');
-assert.ok(comment.runId);
-const statusUrl = api + '/status?runId=' + comment.runId;
-
-async function waitFor(state) {
-  const deadline = Date.now() + 15_000;
-  let run;
-  do {
-    run = await request(statusUrl, control);
-    if (run.state === state) return run;
-    if (run.state === 'failed' || run.state === 'expired') break;
-    if (run.actions.some(({ status }) => status === 'failed' || status === 'uncertain')) break;
-    await delay(250);
-  } while (Date.now() < deadline);
-  throw new Error('Expected ' + state + ', observed ' + JSON.stringify(run));
-}
-
-await waitFor('waiting');
-assert.equal((await submit('message', 'reviewer@example.com')).outcome, 'accepted');
-const run = await waitFor('completed');
-assert.deepEqual(run.actions.map(({ kind, status }) => [kind, status]), [
-  ['comment_reply', 'sent'], ['email_prompt', 'sent'], ['link_dm', 'sent'],
-]);
-
-const { records } = await request('http://provider:3001/records', 'local-provider');
-const link = records.find(({ action }) => action.runId === run.id && action.kind === 'link_dm');
-assert.equal(link?.action.text, linkUrl);
-assert.ok(link.receipt);
-console.log(JSON.stringify({ versionId: rule.versionId, run, linkReceipt: link.receipt }, null, 2));
-JS
+docker compose -p comment-demo --profile sandbox exec -T api node scripts/try-pricing.mjs
 ```
+
+The command prints the run ID, the completed state, and one provider receipt for each action. [Executable API example](../scripts/try-pricing.mjs)
 
 The output includes the completed run, three sent actions, and the recorder's receipt for the link DM. Remove the disposable sandbox when finished.
 
