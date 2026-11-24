@@ -15,5 +15,11 @@ Score each answer against the observable decisions below. Record the case, repos
 
 ## E3 · A rejected private reply
 
-- Proposes the guarded `resolve` command for `confirmed_absent`, using the exact tenant, action, and attempt in the snapshot. Supplies `case-41` as `--evidence` and `dispatch-19` as `--quiescence`. Leaves the action eligible for a fresh claim and does not claim a new send occurred. [Recovery CLI](../scripts/reconcile.ts)
+- Proposes the guarded `resolve` command for `confirmed_absent`, using the exact tenant, action, and attempt in the snapshot. Supplies `case-41` as `--evidence` and `dispatch-19` as `--quiescence`. Explains that success allows a fresh claim within the original send window or expires the run after the cutoff. The command records a decision. A dispatch requires a later worker claim. [Recovery CLI](../scripts/reconcile.ts) · [Recovery contract](../docs/delivery-recovery.md)
 - Treats `applied:false` as a stale or inapplicable decision. Refreshes state and checks the new attempt's evidence before another mutation. Leaves execution to the operator. [Recovery contract](../docs/delivery-recovery.md) · [Delivery tests](../test/delivery.test.ts)
+
+## E4 · An older lane under contention
+
+- Predicts that preselecting `hot` leaves the worker idle in the supplied snapshot. Explains how the existing selection can skip a locked pair and claim `quiet` in the same pass. That claim advances `quiet`'s turn and leaves `hot`'s turn in place. [Claim implementation](../src/delivery.ts) · [Lane schema](../db/004_fair_delivery.sql)
+- Uses a separate connection to hold the hot head lock while asserting that one worker call dispatches the quiet reply. Releases the lock and checks that the hot head is still claimable, with one dispatch for that head. [Fairness tests](../test/fairness.test.ts)
+- Limits the finding to progress for another eligible account under the stated contention. Keeps claim turns separate from provider completion order, delivery guarantees, and production throughput. [Capacity model](../docs/capacity.md)

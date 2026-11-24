@@ -1,6 +1,6 @@
 # Rebuild the design with agents
 
-The reviewer can read the service design and run its tests without a model account. To generate another design from a particular revision, use the eight-role runner. It captures the committed application source and sends a different engineering question to each specialist. The writer combines their handoffs into one document. A technical reviewer and an English editor read that draft independently before the final revision.
+Use the eight-role runner to generate a design from a committed revision. It captures the application source and sends a different engineering question to each specialist. The writer combines their handoffs into one document. A technical reviewer and an English editor read that draft independently before the final revision. For change-specific skills, manual decision cases, and optional tools, see the [contributor guide](../evals/README.md).
 
 | Role | Inputs from other roles | Output |
 | --- | --- | --- |
@@ -18,9 +18,11 @@ The reviewer can read the service design and run its tests without a model accou
 Node.js 22 and Git suffice for the offline plan and transport tests. Live generation uses an authenticated Codex CLI. The command-line options were checked with version 0.171.0.
 
 ```sh
-node agents/run.mjs plan
-node --test agents/runner.test.mjs
+make agents-plan
+make eval
 ```
+
+These targets call `node agents/run.mjs plan` and `node --test agents/runner.test.mjs` respectively. Both run without a model account.
 
 From a committed checkout, pick an unused output directory whose parent exists. The runner sends source to the configured model provider. A fresh run uses eight calls with at most two in flight by default. Set `--jobs` between one and four to change the bound.
 
@@ -30,6 +32,8 @@ GPT-6.2 Sol extracts requirements and edits English. GPT-6.2 Astra handles archi
 node agents/run.mjs run /tmp/blotato-design-01
 ```
 
+Add `--profile NAME` to opt in to the shared preferences in a [local developer profile](developer-context.md). The runner uses the selected writing detail and review focus. The developer's objective and next-step note stay in the local handoff.
+
 Read `design.md` in the output directory. Check its worked Instagram example, numbered requirements, UML 2 component, sequence, state machine and class diagrams, failure handling and test evidence against the source commit. Each role leaves its own Markdown handoff and a JSON receipt with its requested model, dependencies and digests. The root `run.json` records the source commit, included files, CLI version, model routes, deadline and job limit.
 
 Each model call has a 600-second deadline. Override it with `--timeout-seconds` from 1 to 3600. At the deadline the runner stops its own CLI process and treats the role as failed. If a role fails, the runner finishes its running siblings and exits with an error. To continue after a failure or interruption, use a fresh destination.
@@ -38,11 +42,11 @@ Each model call has a 600-second deadline. Override it with `--timeout-seconds` 
 node agents/run.mjs resume /tmp/blotato-design-01 /tmp/blotato-design-02
 ```
 
-A resume requires the same source commit. The runner reuses a handoff when its Markdown still matches its recorded digest and the input signature matches the new request. That signature covers the product requirements, role instructions, source context, predecessor text, CLI version and role-specific model. A change to an upstream answer reruns the stages that consume it. Starting a new run forces fresh model calls.
+A resume requires the same source commit and shared preferences. Pass the profile again if the previous run used shared preferences. The runner reuses a handoff when its Markdown still matches its recorded digest and the input signature matches the new request. That signature covers the product requirements, role instructions, source context, predecessor text, CLI version and role-specific model. A change to an upstream answer reruns the stages that consume it. Starting a new run forces fresh model calls.
 
 ## Evidence and permissions
 
-Each role receives the [product requirements](../agents/problem.md), its [role instructions](../agents/roles.mjs) and the handoffs listed in the dependency table. Engineering roles also receive a snapshot of the tracked README, package metadata, implementation, SQL, tests, scripts, design documentation and PlantUML sources at HEAD. The snapshot omits agent-process documentation. The English reviewer sees the product requirements and draft. Working-tree edits enter the snapshot after a commit.
+Each role receives the [product requirements](../agents/problem.md), its [role instructions](../agents/roles.mjs) and the handoffs listed in the dependency table. Engineering roles also receive an allowlisted snapshot of tracked source and documentation at HEAD. The English reviewer sees the product requirements and draft. Working-tree edits enter the source snapshot after a commit.
 
 The parent process starts each CLI in a fresh temporary directory with a read-only sandbox. It passes source through standard input, ignores user configuration, and disables shell execution, connected apps, plugins, browser use, web search and nested agents. The parent saves outputs in the selected directory. Application changes, database checks and GitHub publication belong to the separate implementation workflow.
 

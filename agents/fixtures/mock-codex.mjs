@@ -11,7 +11,7 @@ if (args[0] === '--version') {
   for await (const chunk of process.stdin) prompt += chunk;
   const id = prompt.match(/^Role: ([\w-]+)$/m)[1];
   const input = JSON.parse(prompt.split('\n\n').at(-1));
-  const log = (action) => appendFile(process.env.MOCK_LOG, JSON.stringify({ id, action, args, input, cwd: process.cwd() }) + '\n');
+  const log = (action) => appendFile(process.env.MOCK_LOG, JSON.stringify({ id, action, args, prompt, input, cwd: process.cwd() }) + '\n');
   await log('start');
   const delay = id === process.env.MOCK_SLOW ? 20000 : 90;
   await new Promise((resolve) => setTimeout(resolve, delay));

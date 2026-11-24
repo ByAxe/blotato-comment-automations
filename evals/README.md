@@ -1,0 +1,28 @@
+# Contributor skills and evaluations
+
+The repository ships three instruction-only skills under [`.agents/skills`](../.agents/skills). Codex discovers them when launched inside this checkout. Invoke one by name with `$` or let Codex match the task. In another client, point the agent at the linked `SKILL.md` and ask it to follow the instructions from the repository root. A human reviewer can follow the same files. [Codex skill discovery](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)
+
+## Choose a case
+
+| Repository skill | Case | Inputs to give the agent | What the reviewer checks |
+| --- | --- | --- | --- |
+| [Change the comment workflow](../.agents/skills/change-comment-workflow/SKILL.md) | [E1 · Extend the wait](cases.md#e1--extend-the-wait) | The change request, [requirements](../docs/requirements.md), [workflow](../src/workflow.ts), [delivery](../src/delivery.ts), [schema](../db/001_core.sql), [provider contract](../docs/integration.md), and [workflow tests](../test/workflow.test.ts). | Finds the deadline writer and covers new waits, stored deadlines, and the in-flight reply and retry boundaries. |
+| [Reconcile an uncertain social send](../.agents/skills/reconcile-social-send/SKILL.md) | [E2 · A lost link receipt](cases.md#e2--a-lost-link-receipt) | A synthetic action snapshot and [recovery procedure](../docs/delivery-recovery.md). | Keeps the action held on incomplete evidence and identifies what would justify a resolution. |
+| [Reconcile an uncertain social send](../.agents/skills/reconcile-social-send/SKILL.md) | [E3 · A rejected private reply](cases.md#e3--a-rejected-private-reply) | A synthetic action snapshot, two evidence references, the [recovery procedure](../docs/delivery-recovery.md), and the [CLI parser](../scripts/reconcile.ts). | Prepares an attempt-guarded operator command and explains what to do if the attempt changes. |
+| [Verify delivery fairness](../.agents/skills/verify-delivery-fairness/SKILL.md) | [E4 · An older lane under contention](cases.md#e4--an-older-lane-under-contention) | The proposed query change, two synthetic accounts, [worker](../src/delivery.ts), [lane migration](../db/004_fair_delivery.sql), and [fairness tests](../test/fairness.test.ts). | Predicts progress while a lock is held, proposes an observable regression check, and limits the fairness claim to the evidence. |
+
+## Run and score a case
+
+1. Open a fresh session in a scratch directory. Give it `AGENTS.md`, one case from [cases.md](cases.md), the relevant skill, and the input files it needs. Keep the relative paths for local references. Leave the rubric, other answers, developer context, and live services outside the session.
+2. Compare the written result and any tool activity with [rubric.md](rubric.md). Record the source revision, skill version or revision, client/model if known, and each met or missed criterion. Keep the response or a short excerpt for a miss. For a before-and-after comparison, give a second fresh session the same case and source without the skill or repository skill discovery.
+
+`make eval` runs offline checks on the agent harness. The written case decisions are scored by a reviewer. `make test` or `npm test` exercises application behavior against disposable PostgreSQL. E1 relates to [workflow](../test/workflow.test.ts) and [window](../test/window.test.ts) tests, E2 and E3 to [delivery tests](../test/delivery.test.ts) and the [recovery CLI test](../test/recovery-cli.test.ts), and E4 to [fairness tests](../test/fairness.test.ts). Use [the local setup](../README.md) for prerequisites. A test definition shows the intended check. Its execution output establishes a result for that revision.
+
+## Optional tools and methods
+
+| When to use it | Optional tool | Run the same review without the tool |
+| --- | --- | --- |
+| A change moves a boundary, such as splitting workflow state from delivery or changing who owns a reporting fact. | [Modularity](https://github.com/vladikk/modularity) and its [Balanced Coupling skill](https://github.com/vladikk/modularity/blob/main/skills/balanced-coupling/SKILL.md) | Pick a likely change. Trace which files, schemas, deployments, and transaction guarantees have to change together. Compare the cost of keeping them together with the cost of coordinating across a boundary. Ground the finding in code and tests. [Worked examples](../docs/modularity.md) |
+| A visual walkthrough or operator flow needs design review. | [Product Design audit](https://github.com/openai/plugins/blob/main/plugins/product-design/skills/audit/SKILL.md) | Inspect the rendered flow at an intended viewport with a synthetic account. Ask a second reviewer to judge the screenshots independently. Compare evidence on what users see, what action they can take, and whether the state matches the runtime. |
+| A public explanation or runbook needs an English editing pass. | [Humanizer](https://github.com/blader/humanizer) | Replace vague claims with observed facts, remove repeats, and read the revision aloud. Compare against the source for changes to meaning, numbers, commands, links, and evidence limits. |
+| A design question benefits from separate requirements, architecture, data, and reliability work. | [Codex CLI](https://github.com/openai/codex) with the [design runner](../docs/agent-workflow.md) | Use the same checked-out revision in separate sessions or review passes. Give each reviewer one question and the files to answer it. Integrate their notes and verify the combined claims once. |
