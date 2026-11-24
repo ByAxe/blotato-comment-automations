@@ -25,7 +25,7 @@ services:
 
   migrate:
     <<: *runtime
-    command: [node, scripts/migrate.mjs]
+    command: [node, db/migrate.mjs]
     environment: *database
     depends_on:
       postgres:
@@ -33,7 +33,7 @@ services:
 
   api:
     <<: *runtime
-    command: [node, dist/scripts/server.js]
+    command: [node, dist/src/bin/server.js]
     environment:
       <<: *database
       HOST: 0.0.0.0
@@ -59,7 +59,7 @@ services:
 
   worker:
     <<: *runtime
-    command: [node, dist/scripts/worker.js]
+    command: [node, dist/src/bin/worker.js]
     environment:
       <<: *database
       PROVIDER_URL: http://provider:3001/send
@@ -73,7 +73,7 @@ services:
 
   provider:
     <<: *runtime
-    command: [node, dist/scripts/recording-provider.js]
+    command: [node, dist/examples/recording-provider.js]
     environment:
       PROVIDER_HOST: 0.0.0.0
       PROVIDER_TOKEN: ${STAGE_PROVIDER_TOKEN:?Set the disposable provider credential}

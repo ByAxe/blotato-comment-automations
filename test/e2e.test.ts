@@ -21,7 +21,7 @@ async function waitFor<T>(description: string, observe: () => T | undefined | Pr
 }
 
 function startProcess(entry: 'server' | 'worker', env: NodeJS.ProcessEnv) {
-  const script = fileURLToPath(new URL(`../scripts/${entry}.js`, import.meta.url));
+  const script = fileURLToPath(new URL(`../src/bin/${entry}.js`, import.meta.url));
   const child = spawn(process.execPath, [script], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   const lines: string[] = [];
   const events = new Map<string, Record<string, unknown>>();

@@ -74,7 +74,7 @@ java -Djava.awt.headless=true -jar /path/to/plantuml-1.2026.10.jar -failfast2 -t
 Edit the [pricing sequence](assets/pricing-sequence.svg) or [uncertain send](assets/uncertain-send.svg) SVG and regenerate both GIFs with Python 3.10+ and FFmpeg 5.1+. Use macOS's built-in `sips` or install `rsvg-convert` on Linux. The Debian and Ubuntu package is `librsvg2-bin`.
 
 ```sh
-python3 scripts/render-readme-gifs.py
+python3 docs/assets/render-readme-gifs.py
 ```
 
 Pass `--output-dir /path/to/previews` to render without replacing the README GIFs.

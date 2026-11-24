@@ -33,7 +33,8 @@ printf '%s\n' "\$checksum" | shasum -a 256 -c -
 docker image load --input "\$archive"
 git clone --branch "$tag" --depth 1 "$repo_url.git"
 cd "$repo_name"
-node scripts/staging-smoke.mjs --local "$IMAGE:$tag" "$GITHUB_SHA"
+test "\$(git rev-parse HEAD)" = "$GITHUB_SHA"
+node ops/staging-smoke.mjs --local "$IMAGE:$tag" "$GITHUB_SHA"
 )
 \`\`\`
 
@@ -50,34 +51,50 @@ check_release_identity() {
     <<< "$release" >/dev/null
 }
 
-if release="$(read_release 2>"$RUNNER_TEMP/release-lookup.err")"; then
-  check_release_identity
-  if [[ $(jq -r '.isDraft' <<< "$release") == true ]]; then
-    gh release upload "$tag" "${files[@]}" --clobber
-  fi
-else
+release_assets() {
+  local api_url
+  api_url="$(jq -er '.apiUrl' <<< "$release")"
+  gh api "$api_url" --jq '.assets'
+}
+
+verified_release_asset() {
+  local file=$1 checksum
+  checksum="$(sha256sum "$file" | cut -d' ' -f1)"
+  jq -er --arg name "$file" --arg digest "sha256:$checksum" \
+    '.[] | select(.name == $name and .state == "uploaded" and .size > 0 and .digest == $digest)' \
+    <<< "$assets" || {
+    printf '::error::Release asset %s does not match the staged file.\n' "$file" >&2
+    return 1
+  }
+}
+
+if ! release="$(read_release 2>"$RUNNER_TEMP/release-lookup.err")"; then
   if ! grep -Fxq 'release not found' "$RUNNER_TEMP/release-lookup.err"; then
     cat "$RUNNER_TEMP/release-lookup.err" >&2
     exit 1
   fi
   gh release create "$tag" "${files[@]}" --draft --verify-tag --title "$tag" --notes-file "$notes"
   release="$(read_release)"
-  check_release_identity
 fi
-
-api_url="$(jq -er '.apiUrl' <<< "$release")"
-release_assets() {
-  gh api "$api_url" --jq '.assets'
-}
+check_release_identity
 
 if [[ $(jq -r '.isDraft' <<< "$release") == true ]]; then
   assets="$(release_assets)"
+  missing=()
   for file in "${files[@]}"; do
-    checksum="$(sha256sum "$file" | cut -d' ' -f1)"
-    jq -e --arg name "$file" --arg digest "sha256:$checksum" \
-      'any(.[]; .name == $name and .state == "uploaded" and .digest == $digest)' \
-      <<< "$assets" >/dev/null
+    if jq -e --arg name "$file" 'any(.[]; .name == $name)' <<< "$assets" >/dev/null; then
+      verified_release_asset "$file" >/dev/null
+    else
+      missing+=("$file")
+    fi
   done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    gh release upload "$tag" "${missing[@]}"
+    assets="$(release_assets)"
+    for file in "${files[@]}"; do
+      verified_release_asset "$file" >/dev/null
+    done
+  fi
   gh release edit "$tag" --draft=false --verify-tag
 fi
 
@@ -86,9 +103,7 @@ check_release_identity
 test "$(jq -r '.isDraft' <<< "$release")" = false
 assets="$(release_assets)"
 for file in "${files[@]}"; do
-  url="$(jq -er --arg name "$file" \
-    '.[] | select(.name == $name and .state == "uploaded" and .size > 0) | .browser_download_url' \
-    <<< "$assets")"
+  url="$(verified_release_asset "$file" | jq -er '.browser_download_url')"
   curl --fail --silent --show-error --location --head --retry 3 --retry-all-errors "$url" >/dev/null
 done
 

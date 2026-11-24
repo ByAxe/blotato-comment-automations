@@ -11,11 +11,11 @@ Score each answer against the observable decisions below. Record the case, repos
 ## E2 · A lost link receipt
 
 - Holds the action. Classifies an expired lease and a missing feed item as insufficient to establish non-acceptance or to attest that a late provider effect is impossible. [Recovery contract](../docs/delivery-recovery.md)
-- Identifies evidence for both possible resolutions. An acceptance finding needs a matching provider receipt. Retrying after an absence finding requires affirmative non-acceptance and evidence that the old dispatcher and transport can no longer send. Uses evidence references and the guarded recovery path when an operator is authorized. [Delivery implementation](../src/delivery.ts) · [Recovery CLI](../scripts/reconcile.ts)
+- Identifies evidence for both possible resolutions. An acceptance finding needs a matching provider receipt. Retrying after an absence finding requires affirmative non-acceptance and evidence that the old dispatcher and transport can no longer send. Uses evidence references and the guarded recovery path when an operator is authorized. [Delivery implementation](../src/delivery.ts) · [Recovery CLI](../src/bin/reconcile.ts)
 
 ## E3 · A rejected private reply
 
-- Proposes the guarded `resolve` command for `confirmed_absent`, using the exact tenant, action, and attempt in the snapshot. Supplies `case-41` as `--evidence` and `dispatch-19` as `--quiescence`. Explains that success allows a fresh claim within the original send window or expires the run after the cutoff. The command records a decision. A dispatch requires a later worker claim. [Recovery CLI](../scripts/reconcile.ts) · [Recovery contract](../docs/delivery-recovery.md)
+- Proposes the guarded `resolve` command for `confirmed_absent`, using the exact tenant, action, and attempt in the snapshot. Supplies `case-41` as `--evidence` and `dispatch-19` as `--quiescence`. Explains that success allows a fresh claim within the original send window or expires the run after the cutoff. The command records a decision. A dispatch requires a later worker claim. [Recovery CLI](../src/bin/reconcile.ts) · [Recovery contract](../docs/delivery-recovery.md)
 - Treats `applied:false` as a stale or inapplicable decision. Refreshes state and checks the new attempt's evidence before another mutation. Leaves execution to the operator. [Recovery contract](../docs/delivery-recovery.md) · [Delivery tests](../test/delivery.test.ts)
 
 ## E4 · An older lane under contention

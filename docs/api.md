@@ -7,22 +7,21 @@ The example runs an HTTP API and a separate PostgreSQL-backed worker. The worker
 From the repository root, start the disposable sandbox and wait for the API to respond.
 
 ```sh
-docker compose -p comment-demo --profile sandbox up --build -d api worker
-curl -fsS --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1:3030/healthz
+make sandbox-up
 ```
 
 Run the example to publish the rule, submit a comment, wait for the email prompt, and reply. It generates distinct event and object IDs, uses the same participant for both events, and takes each timestamp when the event is sent. The script runs in the API container so it can also inspect the private recording provider.
 
 ```sh
-docker compose -p comment-demo --profile sandbox exec -T api node scripts/try-pricing.mjs
+make sandbox-demo
 ```
 
-The command prints the run ID, the completed state, and one provider receipt for each action. [Executable API example](../scripts/try-pricing.mjs)
+The command prints the run ID, the completed state, and one provider receipt for each action. [Executable API example](../examples/try-pricing.mjs)
 
-The output includes the completed run, three sent actions, and the recorder's receipt for the link DM. Remove the disposable sandbox when finished.
+Remove the disposable sandbox when finished.
 
 ```sh
-docker compose -p comment-demo --profile sandbox down --volumes
+make sandbox-down
 ```
 
 ## Process configuration
@@ -143,4 +142,4 @@ A fixture receipt uses at most 256 characters from letters, digits and `._:-`. T
 
 After a confirmed non-send, a retry uses the same logical action ID and can use the regular prompt if the earlier context has expired or been deleted. A production adapter must support this for known non-sends. Unresolved attempts wait for reconciliation.
 
-For a manual run, start `node dist/scripts/recording-provider.js` with `PROVIDER_TOKEN`. It binds to `127.0.0.1:3001` by default. Override the binding with `PROVIDER_HOST` and `PROVIDER_PORT`. A port of `0` selects an ephemeral port reported by the `recording_provider_listening` event. Point the worker at the recorder's `/send` route. The recorder returns the same receipt for the same action and key and rejects a conflicting payload with `409`. Inspect its health with `GET /healthz` and its latest recordings with authenticated `GET /records?limit=100`. The response includes `total` and a `records` array of `{action, receipt}`. The recorder retains at most 1,000 synthetic sends in memory across worker restarts. Restarting the recorder clears them.
+For a manual run, start `node dist/examples/recording-provider.js` with `PROVIDER_TOKEN`. It binds to `127.0.0.1:3001` by default. Override the binding with `PROVIDER_HOST` and `PROVIDER_PORT`. A port of `0` selects an ephemeral port reported by the `recording_provider_listening` event. Point the worker at the recorder's `/send` route. The recorder returns the same receipt for the same action and key and rejects a conflicting payload with `409`. Inspect its health with `GET /healthz` and its latest recordings with authenticated `GET /records?limit=100`. The response includes `total` and a `records` array of `{action, receipt}`. The recorder retains at most 1,000 synthetic sends in memory across worker restarts. Restarting the recorder clears them.

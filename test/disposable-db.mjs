@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { migrate } from './migrate.mjs';
+import { migrate } from '../db/migrate.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const [mode, ...args] = process.argv.slice(2);
@@ -44,14 +44,14 @@ async function suite(adminUrl) {
       for (const file of files) await isolated(admin, adminUrl, ['--test', 'dist/test/' + file]);
     }
     if (mode === 'e2e') await isolated(admin, adminUrl, ['--test', 'dist/test/e2e.test.js']);
-    if (mode === 'demo' || mode === 'verify') await isolated(admin, adminUrl, ['dist/scripts/demo.js']);
+    if (mode === 'demo' || mode === 'verify') await isolated(admin, adminUrl, ['dist/examples/demo.js']);
     if (mode === 'load' || mode === 'verify') {
       const size = mode === 'verify' ? ['--tenants', '3', '--participants', '12'] : args;
-      await isolated(admin, adminUrl, ['dist/scripts/load.js', ...size]);
+      await isolated(admin, adminUrl, ['dist/benchmarks/load.js', ...size]);
     }
     if (mode === 'skew' || mode === 'verify') {
       const size = mode === 'verify' ? ['--hot-comments', '64', '--adapter-ms', '1'] : args;
-      await isolated(admin, adminUrl, ['dist/scripts/skew.js', ...size]);
+      await isolated(admin, adminUrl, ['dist/benchmarks/skew.js', ...size]);
     }
   } finally {
     await admin.end();

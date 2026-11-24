@@ -2,7 +2,7 @@
 
 A customer publishes a keyword, a public reply, an email prompt and a destination URL for a connected Instagram account. The rule can cover the whole account or one post. A matching comment starts one conversation. The service can stop for hours between the prompt and the reply. PostgreSQL holds the exact definition version, the step the conversation reached and the evidence needed to decide what may happen next.
 
-[Runtime and state diagrams](diagrams.md) · [Product requirements](requirements.md) · [Tables and reporting grains](data.md) · [Production sizing and storage choice](storage-and-sizing.md) · [Modularity review](modularity.md)
+[Runtime and state diagrams](diagrams.md) · [Product requirements](requirements.md) · [Tables and reporting grains](data.md) · [Production sizing and storage choice](storage-and-sizing.md)
 
 ## Where a transaction ends
 
@@ -15,6 +15,20 @@ A customer publishes a keyword, a public reply, an email prompt and a destinatio
 | Resolve an unknown send | Lock the action in the owning tenant, check its attempt number, record the operator and evidence, then apply the decision. | A stale resolution cannot authorize a later attempt. |
 
 These operations use PostgreSQL's default read-committed isolation. Advisory transaction locks serialize all state transitions concerning one person on one account. Row locks protect the version pointer and the delivery claim. Composite foreign keys, a partial unique index for the active conversation and a unique key for each run and action kind enforce the same invariants when several connections race. The queue uses `SKIP LOCKED` only to choose work. Its incomplete view of locked rows is appropriate there. [PostgreSQL transactions](https://www.postgresql.org/docs/17/tutorial-transactions.html) · [PostgreSQL locking reads](https://www.postgresql.org/docs/17/sql-select.html#SQL-FOR-UPDATE-SHARE)
+
+## Boundaries for common changes
+
+The API and worker deploy as separate processes. They share PostgreSQL so a state transition and its next outbound intent commit together. The network boundary is the social adapter. [Worker and API entry points](../src/bin) · [Provider integration](integration.md)
+
+| Change | Where to make it |
+| --- | --- |
+| Add a sending provider | Implement `SocialAdapter` and translate its action ID, cutoff and outcome. Advance a run on a terminal acceptance. A new social platform also needs compatible normalized identities, private reply permissions and send windows. [Adapter](../src/adapter.ts) · [Provider integration](integration.md) |
+| Change post targeting | Update publication and matching together in the workflow. Apply the predicate at run creation. Delivery uses the pinned version for message content. [Workflow](../src/workflow.ts) · [Post scope tests](../test/post-scope.test.ts) |
+| Change send settlement | Normal acceptance and operator-confirmed acceptance call `settleSent` so both apply the same state transition and enqueue any next action. Recovery guards the action and attempt and stores the decision in the same transaction. [Delivery implementation](../src/delivery.ts) · [Recovery procedure](delivery-recovery.md) |
+| Change claim fairness | Keep the claim query, indexes and lane counter triggers in step across enqueue, retry and expiry. The claim locks the lane and its head together so a locked head leaves other eligible accounts available. A successful claim advances the turn. Provider latency can change completion order. [Lane schema](../db/004_fair_delivery.sql) · [Fairness tests](../test/fairness.test.ts) |
+| Change the capture metric | The reporting view counts a `link_dm` action because capture saves the address and queues the link together. If a new path captures a lead without a link action, record a non-personal capture fact in the capture transaction and count it by the run's UTC start cohort. [Reporting view](../db/003_analytics.sql) · [Analytics tests](../test/analytics.test.ts) |
+
+When changing the schema contract, update the shared readiness check and verify upgrades with older definitions and queued actions. [Readiness](../src/runtime.ts) · [Upgrade test](../test/post-scope.test.ts)
 
 ## Early replies and uncertain sends
 
@@ -42,4 +56,4 @@ Workflow replay would recover the orchestration state. An Activity can still cal
 
 Adding another platform starts at the adapter boundary. It needs stable event and object identities, a way to correlate a comment with a private sender, and an explicit send outcome. A platform that cannot initiate a private reply cannot enable this template. Multiple independent rules per connected account require a rule ID in trigger deduplication and an explicit conflict policy for an unthreaded reply. That product decision comes before exposing a rule builder.
 
-The size and shape of the backlog determine when to split the single database. The capacity note gives the measured workload, how to recognize a hot tenant, and how a shard handoff would preserve the conversation lock and idempotency keys. [Capacity and recovery](capacity.md)
+Use queue age and database saturation under a representative workload to assess when to split the database. A shard handoff must preserve conversation locks and idempotency keys. [Capacity and recovery](capacity.md)

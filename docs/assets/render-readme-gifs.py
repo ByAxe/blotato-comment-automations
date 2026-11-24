@@ -13,7 +13,7 @@ from tempfile import TemporaryDirectory
 from xml.etree import ElementTree as ET
 
 
-ASSETS = Path(__file__).resolve().parents[1] / "docs" / "assets"
+ASSETS = Path(__file__).resolve().parent
 SVG_NS = "http://www.w3.org/2000/svg"
 BACKGROUND = "#F8FAFC"
 GREEN = "#14765B"

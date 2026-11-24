@@ -1,5 +1,5 @@
-import { createHttpServer } from '../src/http.js';
-import { databaseReady, integerEnv, logFailure, openPool, requiredEnv, runServer } from '../src/runtime.js';
+import { createHttpServer } from '../http.js';
+import { databaseReady, integerEnv, logFailure, openPool, requiredEnv, runServer } from '../runtime.js';
 
 async function main(): Promise<void> {
   const access = {

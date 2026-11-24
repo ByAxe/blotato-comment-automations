@@ -3,7 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import pg from 'pg';
 
-const directory = new URL('../db/', import.meta.url);
+const directory = new URL('./', import.meta.url);
 
 export async function migrate(connectionString) {
   if (!connectionString) throw new Error('Set DATABASE_URL to the target PostgreSQL database.');

@@ -59,7 +59,7 @@ sandbox-up:
 	curl -fsS --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1:3030/healthz >/dev/null
 
 sandbox-demo:
-	$(sandbox) exec -T api node scripts/try-pricing.mjs
+	$(sandbox) exec -T api node examples/try-pricing.mjs
 
 sandbox-down:
 	$(sandbox) down --volumes
@@ -71,10 +71,10 @@ context:
 	$(NODE) agents/context.mjs show $(ARGS)
 
 hooks-install:
-	sh scripts/install-hooks.sh
+	sh .githooks/install.sh
 
 agents-plan:
 	$(NPM) run agents:plan
 
 readme-gifs:
-	python3 scripts/render-readme-gifs.py
+	python3 docs/assets/render-readme-gifs.py

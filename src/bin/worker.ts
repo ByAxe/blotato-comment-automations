@@ -1,9 +1,9 @@
 import { setTimeout as wait } from 'node:timers/promises';
-import { deliverOne } from '../src/delivery.js';
-import { FakeHttpSocialAdapter } from '../src/http-provider.js';
-import { databaseReady, integerEnv, logEvent, logFailure, openPool, requiredEnv } from '../src/runtime.js';
-import { expireWaits } from '../src/workflow.js';
-import { expireParticipantContext } from '../src/participant-context.js';
+import { deliverOne } from '../delivery.js';
+import { FakeHttpSocialAdapter } from '../http-provider.js';
+import { databaseReady, integerEnv, logEvent, logFailure, openPool, requiredEnv } from '../runtime.js';
+import { expireWaits } from '../workflow.js';
+import { expireParticipantContext } from '../participant-context.js';
 
 async function main(): Promise<void> {
   const pollMs = integerEnv('WORKER_POLL_MS', 1_000, 10, 60_000);

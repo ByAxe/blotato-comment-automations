@@ -1,6 +1,6 @@
 # Social provider integration
 
-The workflow depends on an authenticated adapter for comment and DM intake, public replies, initial private replies, and follow-up DMs. A connected Instagram professional account can support this flow with the appropriate permissions and subscriptions. A new provider must expose the same capabilities or return a clear unsupported or ineligible outcome. [Instagram Platform overview](https://developers.facebook.com/documentation/instagram-platform/overview).
+The workflow depends on an authenticated adapter for comment and DM intake, public replies, initial private replies, and follow-up DMs. A connected Instagram professional account can support this flow with the appropriate permissions and subscriptions. A new provider must expose the same capabilities or return a clear unsupported or ineligible outcome. [Instagram Platform overview](https://developers.facebook.com/documentation/instagram-platform/overview) · [Blotato product comparison, November 2026](../evidence/2026-11-24-blotato-product-context.md)
 
 ## Instagram pricing flow
 

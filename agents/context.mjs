@@ -7,15 +7,18 @@ import { parseArgs } from 'node:util';
 
 const checkout = dirname(dirname(fileURLToPath(import.meta.url)));
 const empty = { version: 1, objective: '', nextStep: '', detail: 'default', reviewFocus: 'default' };
+const handoffFields = ['objective', 'nextStep'];
+const maxHandoffBytes = 32 * 1024;
 const details = ['default', 'concise', 'expanded'];
 const focuses = ['default', 'reliability', 'data', 'operations'];
-const usage = 'node agents/context.mjs show | set [--profile NAME] [--objective TEXT] [--next-step TEXT] [--detail default|concise|expanded] [--review-focus default|reliability|data|operations]';
+const usage = 'node agents/context.mjs show [--profile NAME]\n' +
+  'node agents/context.mjs set [--profile NAME] [--handoff-stdin] [--detail default|concise|expanded] [--review-focus default|reliability|data|operations]';
 
 function validate(profile) {
   if (profile?.version !== 1 || Object.keys(profile).some((k) => !Object.hasOwn(empty, k))) {
     throw new Error('Unsupported developer profile schema');
   }
-  for (const key of ['objective', 'nextStep']) {
+  for (const key of handoffFields) {
     if (typeof profile[key] !== 'string' || profile[key].length > 2000) throw new Error(key + ' must be text of at most 2000 characters');
   }
   if (!details.includes(profile.detail)) throw new Error('detail must be one of ' + details.join(', '));
@@ -93,22 +96,52 @@ async function update(file, changes) {
   } finally { await rm(lock, { recursive: true, force: true }); }
 }
 
+async function readHandoff() {
+  if (process.stdin.isTTY) console.error('Enter JSON with objective and/or nextStep. Press Enter, then Ctrl+D.');
+  const chunks = [];
+  let bytes = 0;
+  for await (const chunk of process.stdin) {
+    bytes += chunk.length;
+    if (bytes > maxHandoffBytes) throw new Error('Handoff input exceeds 32 KiB');
+    chunks.push(chunk);
+  }
+  let handoff;
+  try {
+    handoff = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, bytes)));
+  } catch {
+    throw new Error('Handoff input must be valid UTF-8 JSON');
+  }
+  if (!handoff || typeof handoff !== 'object' || Array.isArray(handoff) ||
+    !Object.keys(handoff).length || Object.keys(handoff).some((key) => !handoffFields.includes(key))) {
+    throw new Error('Handoff JSON must contain objective, nextStep, or both');
+  }
+  return handoff;
+}
+
 async function main() {
-  const { positionals, values } = parseArgs({ allowPositionals: true, options: {
-    profile: { type: 'string', default: 'default' }, objective: { type: 'string' }, 'next-step': { type: 'string' },
-    detail: { type: 'string' }, 'review-focus': { type: 'string' }
-  } });
+  let args;
+  try {
+    args = parseArgs({ allowPositionals: true, options: {
+      profile: { type: 'string', default: 'default' }, 'handoff-stdin': { type: 'boolean' },
+      detail: { type: 'string' }, 'review-focus': { type: 'string' }
+    } });
+  } catch {
+    // Argument parser diagnostics can quote unrecognized arguments.
+    throw new Error(usage);
+  }
+  const { positionals, values } = args;
   if (positionals.length !== 1) throw new Error(usage);
   const file = await location(values.profile);
   const changes = {};
-  for (const [flag, field] of Object.entries({ objective: 'objective', 'next-step': 'nextStep', detail: 'detail', 'review-focus': 'reviewFocus' })) {
+  for (const [flag, field] of Object.entries({ detail: 'detail', 'review-focus': 'reviewFocus' })) {
     if (values[flag] !== undefined) changes[field] = values[flag];
   }
-  const hasChanges = Object.keys(changes).length > 0;
+  const hasChanges = values['handoff-stdin'] || Object.keys(changes).length > 0;
   if (positionals[0] === 'show' && !hasChanges) {
     const profile = await readProfile(file);
     console.log(profile ? JSON.stringify(profile, null, 2) : 'No local developer profile saved.');
   } else if (positionals[0] === 'set' && hasChanges) {
+    if (values['handoff-stdin']) Object.assign(changes, await readHandoff());
     await update(file, changes);
     console.log('Developer profile saved locally.');
   } else throw new Error(usage);

@@ -13,3 +13,30 @@ registry_digest() {
   printf 'Unable to resolve %s: %s\n' "$reference" "$output" >&2
   return 1
 }
+
+registry_promote() {
+  local image=$1 digest=$2 reference existing
+  shift 2
+  local -a missing=()
+
+  for reference in "$@"; do
+    existing="$(registry_digest "$reference")" || return 1
+    if [[ -z "$existing" ]]; then
+      missing+=("$reference")
+    elif [[ "$existing" != "$digest" ]]; then
+      printf '::error::%s points to %s, but the staged digest is %s.\n' "$reference" "$existing" "$digest" >&2
+      return 1
+    fi
+  done
+
+  for reference in "${missing[@]}"; do
+    docker buildx imagetools create --prefer-index=false --tag "$reference" "$image@$digest" || return 1
+  done
+  for reference in "$@"; do
+    existing="$(registry_digest "$reference")" || return 1
+    if [[ "$existing" != "$digest" ]]; then
+      printf '::error::Could not confirm the staged digest %s at %s.\n' "$digest" "$reference" >&2
+      return 1
+    fi
+  done
+}

@@ -1,10 +1,10 @@
 # Production sizing and storage decision
 
-Use managed high-availability PostgreSQL as the transactional system of record for the pricing workflow. Scale intake and delivery workers independently and measure the writer against both a busy-hour envelope and a concentrated account burst. [Local PostgreSQL workload and its limits](capacity.md)
+Use managed high-availability PostgreSQL as the transactional system of record for the pricing workflow. Scale intake and delivery workers independently and measure the writer against both a busy-hour envelope and a concentrated account burst. [Capacity testing and scaling](capacity.md)
 
-## Public anchors as of November 24, 2026
+## Sizing inputs from public sources · November 24, 2026
 
-Blotato advertises **10,000+ operators**. The published count has no stated activity window or billing-status definition. In November 2026, founder Sabrina Ramonov cited a book profile describing her solo business as reaching millions in annual revenue. That gives commercial context. Current paid subscriptions, plan mix, automation adoption, inbound volume and peak concurrency remain unknown. [Blotato pricing](https://www.blotato.com/pricing) · [Founder’s November 16 post](https://www.blotato.com/blog/sabrina-ramonov-tony-robbins-ai-advantage)
+Blotato advertised **10,000+ operators** without a stated activity window or billing-status definition. Paid subscriptions, plan mix, automation adoption, inbound volume and peak concurrency are unreported inputs to this model. [Blotato pricing](https://www.blotato.com/pricing)
 
 Starter ($29/month), Creator ($97/month) and Agency ($499/month) include **1,000 / 6,000 / 15,000 active contacts per month** by default. Each person reached by DM or comment reply counts once per connected social account in the billing period, with a shared allowance across the subscription. A tenant in this model is a billing subscription, which can contain several connected accounts. The same person on two accounts can contribute two contact-months. Repeat sends on one account consume no additional contact allowance, and inbound events can arrive without a response. [Blotato pricing](https://www.blotato.com/pricing) · [Billing documentation](https://help.blotato.com/settings/billing-and-credits#active-contacts)
 
@@ -45,7 +45,7 @@ At an illustrative mean adapter call of 250 ms and target 70% worker utilization
 
 Daily inserts for planning/stress are **425k / 3.45M** inbox receipts, **65k / 266k** runs, **148k / 600k** outbox actions and **24k / 96k** leads. Retries reuse an action row. Model each table as daily inserts × retained days × allocated relation bytes divided by its live row count. At illustrative 30 days for inbox and leads and 90 days for runs and outbox, this gives about **32.6M / 184.4M retained rows** across those four tables. Those durations are sizing inputs. Actual receipt retention must cover accepted redelivery and replay, and personal data retention depends on purpose and deletion policy. [Schema and privacy boundaries](data.md)
 
-The 5,000-conversation local run measured each relation after delivery drained. `pg_total_relation_size` includes indexes and allocated table space, including TOAST and auxiliary forks. Dividing by the measured live rows gives the following inputs. The extrapolation covers four primary relations with synthetic payloads. [Local workload and size measurements](capacity.md) · [PostgreSQL size functions](https://www.postgresql.org/docs/17/functions-admin.html)
+The November 2026 5,000-conversation local run measured each relation after delivery drained. `pg_total_relation_size` includes indexes and allocated table space, including TOAST and auxiliary forks. Dividing by the measured live rows gives the following inputs. The extrapolation covers four primary relations with synthetic payloads. [Recorded relation sizes](../evidence/2026-11-24-postgres-workloads.md#5000-conversation-fair-queue) · [PostgreSQL size functions](https://www.postgresql.org/docs/17/functions-admin.html)
 
 | Relation | Measured allocated bytes per live row | Retention used | Planning GiB | Stress GiB |
 | --- | ---: | ---: | ---: | ---: |
@@ -57,7 +57,7 @@ The 5,000-conversation local run measured each relation after delivery drained. 
 
 If allocated bytes per live row double, the sample footprint scales to **30.4 / 161.6 GiB**. Keeping inbox receipts for 90 days instead of 30 raises the original estimate to **24.6 / 156.9 GiB**. Budget other relations, replicas, WAL archives and backups separately. Before choosing storage and I/O, measure production-shaped payloads and a retention-aged mix of inserts, updates and deletes. Track indexes, dead tuples, peak WAL, replica lag and restore duration. Keep tenant-and-account-scoped deduplication across rotation boundaries. A PostgreSQL partitioned unique key must include the partition key, so moving historical rows into time partitions also requires preserving any still-live deduplication keys. [Partitioning constraints](https://www.postgresql.org/docs/17/ddl-partitioning.html)
 
-For versions that collect participant context, estimate interactions from eligible comments and DMs, including replies that leave the wait open. Measure bytes per retained interaction and its indexes over the 30-day expiry window. Include context reads, returning-prompt lookups and expiry batches in the mixed workload. The estimates above use measurements from before that feature. [Participant context](data.md#participant-context) · [Historical workload](capacity.md)
+For versions that collect participant context, estimate interactions from eligible comments and DMs, including replies that leave the wait open. Measure bytes per retained interaction and its indexes over the 30-day expiry window. Include context reads, returning-prompt lookups and expiry batches in the mixed workload. The estimates above use measurements from before that feature. [Participant context](data.md#participant-context) · [Recorded workloads](../evidence/2026-11-24-postgres-workloads.md)
 
 ## When a different architecture pays off
 
@@ -74,8 +74,6 @@ PostgreSQL could also host an append-only domain-event table if event sourcing b
 Keep reporting replay and outbound effects independent. A database restore or log replay can surface old send intents whose provider effects already happened. Hold dispatch during recovery, reconcile against provider receipts or verified absence, and check current eligibility before resuming. Preserve the original timer and provider deadlines. Add CDC first if measured analytical fan-out interferes with the writer, Temporal if orchestration complexity warrants it, and tenant sharding if an aged, mixed workload still saturates a tuned primary. [Recovery procedure](delivery-recovery.md) · [Capacity verification](capacity.md)
 
 ## Introducing the workflow into a live product
-
-An August 2026 founder retrospective names Supabase as the database used after Blotato’s initial rebuild. The current DM automation storage and its migration interfaces remain unpublished in that account. Verify the incumbent's contracts before importing any live state. [Founder’s August 15 retrospective](https://www.sabrina.dev/p/how-i-built-a-1m-solo-ai-business)
 
 On a live PostgreSQL deployment, use an additive schema change, bounded outbox backfill, and compatible writers throughout the expansion. Build indexes concurrently outside the migration transaction, validate the backfill, and tighten constraints once old writers are drained. The repository’s migration can backfill and index in a single transaction for a fresh or controlled installation. [Fair delivery migration](../db/004_fair_delivery.sql) · [PostgreSQL concurrent index builds](https://www.postgresql.org/docs/17/sql-createindex.html#SQL-CREATEINDEX-CONCURRENTLY)
 

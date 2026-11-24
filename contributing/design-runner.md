@@ -1,6 +1,6 @@
 # Rebuild the design with agents
 
-Use the eight-role runner to generate a design from a committed revision. It captures the application source and sends a different engineering question to each specialist. The writer combines their handoffs into one document. A technical reviewer and an English editor read that draft independently before the final revision. For change-specific skills, manual decision cases, and optional tools, see the [contributor guide](../evals/README.md).
+Use the eight-role runner to generate a design from a committed revision. It captures the application source and sends a different engineering question to each specialist. The writer combines their handoffs into one document. A technical reviewer and an English editor read that draft independently before the final revision. For change-specific skills, manual decision cases, and optional tools, see the [skills and evaluations](../evals/README.md).
 
 | Role | Inputs from other roles | Output |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ GPT-6.2 Sol extracts requirements and edits English. GPT-6.2 Astra handles archi
 node agents/run.mjs run /tmp/blotato-design-01
 ```
 
-Add `--profile NAME` to opt in to the shared preferences in a [local developer profile](developer-context.md). The runner uses the selected writing detail and review focus. The developer's objective and next-step note stay in the local handoff.
+Add `--profile NAME` to opt in to the shared preferences in a [local developer profile](developer-profiles.md). The runner uses the selected writing detail and review focus. The developer's objective and next-step note stay in the local handoff.
 
 Read `design.md` in the output directory. Check its worked Instagram example, numbered requirements, UML 2 component, sequence, state machine and class diagrams, failure handling and test evidence against the source commit. Each role leaves its own Markdown handoff and a JSON receipt with its requested model, dependencies and digests. The root `run.json` records the source commit, included files, CLI version, model routes, deadline and job limit.
 
@@ -46,10 +46,8 @@ A resume requires the same source commit and shared preferences. Pass the profil
 
 ## Evidence and permissions
 
-Each role receives the [product requirements](../agents/problem.md), its [role instructions](../agents/roles.mjs) and the handoffs listed in the dependency table. Engineering roles also receive an allowlisted snapshot of tracked source and documentation at HEAD. The English reviewer sees the product requirements and draft. Working-tree edits enter the source snapshot after a commit.
+Each role receives the [product requirements](../agents/problem.md), its [role instructions](../agents/roles.mjs) and the handoffs listed in the dependency table. Engineering roles also receive an allowlisted snapshot of application source and documentation. The English reviewer sees the product requirements and draft. The runner reads the requirements brief and allowlisted files as regular files from the same commit. Commit edits to those files before generating a design from them.
 
 The parent process starts each CLI in a fresh temporary directory with a read-only sandbox. It passes source through standard input, ignores user configuration, and disables shell execution, connected apps, plugins, browser use, web search and nested agents. The parent saves outputs in the selected directory. Application changes, database checks and GitHub publication belong to the separate implementation workflow.
 
 A receipt records which inputs produced a handoff. The technical reviewer can cite a SQL constraint or a test definition from the snapshot. A passing test claim needs separate execution evidence. The offline transport tests use a mock CLI to exercise a failed role, reuse, corruption detection, context isolation and the concurrency bound.
-
-A live eight-role run against source revision `ebfc952` reached `design.md`. All eight handoff digests matched their files. Two calls used Sol and six used Astra. This checks the CLI path and handoffs for that revision. The database and HTTP checks run separately.

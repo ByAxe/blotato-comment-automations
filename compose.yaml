@@ -27,11 +27,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["node", "scripts/migrate.mjs"]
+    command: ["node", "db/migrate.mjs"]
   provider:
     profiles: [sandbox]
     build: *runtime
-    command: ["node", "dist/scripts/recording-provider.js"]
+    command: ["node", "dist/examples/recording-provider.js"]
     environment:
       PROVIDER_HOST: 0.0.0.0
       PROVIDER_TOKEN: local-provider
@@ -57,7 +57,7 @@ services:
   worker:
     profiles: [sandbox]
     build: *runtime
-    command: ["node", "dist/scripts/worker.js"]
+    command: ["node", "dist/src/bin/worker.js"]
     environment:
       DATABASE_URL: *app-db
       PROVIDER_URL: http://provider:3001/send

@@ -11,13 +11,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --from=build /app/dist/src ./dist/src
-COPY --from=build /app/dist/scripts ./dist/scripts
-COPY scripts/migrate.mjs scripts/try-pricing.mjs ./scripts/
+COPY --from=build /app/dist/scripts/reconcile.js ./dist/scripts/reconcile.js
+COPY --from=build /app/dist/examples/recording-provider.js ./dist/examples/recording-provider.js
+COPY examples/try-pricing.mjs ./examples/try-pricing.mjs
 COPY db ./db
 USER node
-CMD ["node", "dist/scripts/server.js"]
+CMD ["node", "dist/src/bin/server.js"]
 
 FROM build AS verify
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 USER node
-CMD ["node", "scripts/disposable-db.mjs", "verify"]
+CMD ["node", "test/disposable-db.mjs", "verify"]

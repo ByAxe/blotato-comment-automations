@@ -12,6 +12,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = dirname(here);
 const usage = 'node agents/run.mjs plan | run NEW_DIR | resume PREVIOUS_DIR NEW_DIR [--profile NAME] [--jobs 1..4] [--model MODEL | --fast-model MODEL --reasoning-model MODEL] [--timeout-seconds 1..3600]';
 const defaults = { fast: 'gpt-6.2-sol', reasoning: 'gpt-6.2-astra' };
+const sourceFiles = /^(?:benchmarks|db|examples|ops|src|test)\/[\w./-]+\.(?:sql|ts|mjs|sh)$/;
+const designDocs = new Set([
+  'docs/api.md', 'docs/architecture.md', 'docs/capacity.md', 'docs/data.md', 'docs/delivery-recovery.md',
+  'docs/diagrams.md', 'docs/integration.md', 'docs/participant-context.md', 'docs/release.md',
+  'docs/requirements.md', 'docs/storage-and-sizing.md'
+]);
 const hash = (text) => createHash('sha256').update(text).digest('hex');
 const read = (file) => readFile(file, 'utf8');
 const json = (object) => JSON.stringify(object, null, 2) + '\n';
@@ -22,15 +28,23 @@ function git(...args) {
 
 function sourceSnapshot() {
   const commit = git('rev-parse', 'HEAD').trim();
-  const paths = git('ls-tree', '-r', '--name-only', '-z', commit).split('\0').filter((name) =>
-    /^(README\.md|package\.json|(?:db|src|test|scripts)\/[\w./-]+\.(?:sql|ts|mjs|sh)|docs\/[\w/-]+\.md|docs\/diagrams\/[\w-]+\.puml)$/.test(name)
-    && !name.startsWith('docs/agent-') && name !== 'docs/ai-engineering.md' && name !== 'docs/developer-context.md'
+  const blobs = new Map();
+  for (const entry of git('ls-tree', '-r', '-z', commit).split('\0')) {
+    const match = /^100(?:644|755) blob ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);
+    if (match) blobs.set(match[2], match[1]);
+  }
+  const problemId = blobs.get('agents/problem.md');
+  if (!problemId) throw new Error('Commit must contain a regular agents/problem.md file');
+  const readBlob = (id) => git('cat-file', 'blob', id);
+  const paths = [...blobs.keys()].filter((name) =>
+    name === 'README.md' || name === 'package.json' || name === 'scripts/reconcile.ts' || sourceFiles.test(name)
+    || designDocs.has(name) || /^docs\/diagrams\/[\w-]+\.puml$/.test(name)
   );
-  const files = paths.map((path) => ({ path, body: git('show', commit + ':' + path) }));
-  return { commit, files };
+  const files = paths.map((path) => ({ path, body: readBlob(blobs.get(path)) }));
+  return { commit, problem: readBlob(problemId), files };
 }
 
-function makePrompt(role, problem, snapshot, handoffs, preferences) {
+function makePrompt(role, snapshot, handoffs, preferences) {
   // The copy editor reads the draft without the specialists' notes or source code.
   const evidence = role.id === 'english-review' ? {} : { files: snapshot.files };
   const style = {
@@ -52,7 +66,7 @@ function makePrompt(role, problem, snapshot, handoffs, preferences) {
     'Role: ' + role.id,
     'Focus: ' + role.focus,
     style, priority,
-    JSON.stringify({ problem, commit: snapshot.commit, ...evidence, handoffs })
+    JSON.stringify({ problem: snapshot.problem, commit: snapshot.commit, ...evidence, handoffs })
   ].filter(Boolean).join('\n\n');
 }
 
@@ -110,10 +124,10 @@ async function runCodex(prompt, target, model, timeoutSeconds) {
 }
 
 async function execute(role, state) {
-  const { problem, snapshot, prior, dir, cli, models, timeoutSeconds, finished } = state;
+  const { snapshot, prior, dir, cli, models, timeoutSeconds, finished } = state;
   const model = models[role.tier];
   const handoffs = Object.fromEntries(role.needs.map((id) => [id, finished.get(id)]));
-  const prompt = makePrompt(role, problem, snapshot, handoffs, state.preferences);
+  const prompt = makePrompt(role, snapshot, handoffs, state.preferences);
   const signature = hash(JSON.stringify([cli, model, prompt]));
   const target = join(dir, role.id + '.md');
   const scratch = target + '.partial';
@@ -166,7 +180,6 @@ async function main() {
     throw new Error('Developer preferences differ from the previous run. Select the original preferences with --profile or start a new run.');
   }
   const dir = resolve(second || first);
-  const problem = await read(join(here, 'problem.md'));
   const snapshot = sourceSnapshot();
   const cli = execFileSync('codex', ['--version'], { encoding: 'utf8' }).trim();
   if (prior && previous.commit !== snapshot.commit) throw new Error('The source commit changed. Start a new run.');
@@ -174,7 +187,7 @@ async function main() {
   await mkdir(dir, { mode: 0o700 });
   await writeFile(join(dir, 'run.json'), json({ commit: snapshot.commit, sourceFiles: snapshot.files.map((f) => f.path), cli, models, jobs, timeoutSeconds, preferencesSha256 }));
   const finished = new Map();
-  const state = { problem, snapshot, prior, dir, cli, models, timeoutSeconds, preferences, finished };
+  const state = { snapshot, prior, dir, cli, models, timeoutSeconds, preferences, finished };
   while (finished.size < roles.length) {
     const ready = roles.filter((r) => !finished.has(r.id) && r.needs.every((id) => finished.has(id))).slice(0, jobs);
     if (!ready.length) throw new Error('No role can start. Check dependency IDs for a cycle or missing role.');

@@ -7,7 +7,7 @@ Use the recovery CLI from an operator shell after `npm run build`. Set `DATABASE
 ## Inspect a held action
 
 ```sh
-node dist/scripts/reconcile.js list --tenant demo-tenant
+node dist/src/bin/reconcile.js list --tenant demo-tenant
 ```
 
 The result lists the action UUID, attempt number, run ID, operation, failure code and first claim time. For more than 50 results, pass the returned `next` UUID as `--after`. The list shows current state. A concurrent sweep can add actions while the operator reads the next page. Check again from the first page after a recovery batch.
@@ -23,13 +23,13 @@ Replace the shell variables with the tenant, action UUID and attempt number show
 * **Abandon.** The team has decided to stop the run. The audit preserves this decision even if the actual recipient experience remains unknown. A missing receipt, a timeout or a message absent from an eventually consistent feed leaves acceptance unresolved.
 
 ```sh
-node dist/scripts/reconcile.js resolve --tenant "$TENANT" --action "$ACTION" --attempt "$ATTEMPT" \
+node dist/src/bin/reconcile.js resolve --tenant "$TENANT" --action "$ACTION" --attempt "$ATTEMPT" \
   --decision confirmed_sent --evidence case-104 --receipt provider-message-42
 
-node dist/scripts/reconcile.js resolve --tenant "$TENANT" --action "$ACTION" --attempt "$ATTEMPT" \
+node dist/src/bin/reconcile.js resolve --tenant "$TENANT" --action "$ACTION" --attempt "$ATTEMPT" \
   --decision confirmed_absent --evidence case-108 --quiescence dispatcher-case-91
 
-node dist/scripts/reconcile.js resolve --tenant "$TENANT" --action "$ACTION" --attempt "$ATTEMPT" \
+node dist/src/bin/reconcile.js resolve --tenant "$TENANT" --action "$ACTION" --attempt "$ATTEMPT" \
   --decision abandon --evidence case-122
 ```
 

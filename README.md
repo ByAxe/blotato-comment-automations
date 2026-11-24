@@ -7,7 +7,7 @@ When someone comments **pricing** on an Instagram post, the automation replies p
 
 ![A pricing comment gets a public reply. The automation asks for an email by DM and sends the pricing link after a valid reply within 24 hours.](docs/assets/pricing-workflow.webp)
 
-[Architecture and UML](docs/diagrams.md) · [Production sizing and storage](docs/storage-and-sizing.md) · [Blotato product context](docs/product-context.md)
+[Architecture and UML](docs/diagrams.md) · [API reference](docs/api.md) · [Production sizing and storage](docs/storage-and-sizing.md)
 
 ## Follow one conversation
 
@@ -66,7 +66,7 @@ Use Node.js 22–24 and make PostgreSQL's `initdb` and `pg_ctl` available on you
 | `npm test` | The full suite covers rule versions, event deduplication, send deadlines, recovery, and run statistics. |
 | `npm run e2e` | The API and worker resume a waiting conversation across restarts with an HTTP recording provider. |
 | `npm run demo` | A two-process trace shows the public reply, email prompt, durable wait, and one link after a duplicated email reply. |
-| `npm run load` | The default workload checks 400 completed conversations and 1,200 accepted simulated sends under concurrent intake and delivery. [Host and timings](docs/capacity.md) |
+| `npm run load` | The default workload checks 400 completed conversations and 1,200 accepted simulated sends under concurrent intake and delivery. [Workload setup](docs/capacity.md#reproduce-the-postgresql-workload) |
 | `npm run skew` | A quiet account receives its turn while another has a backlog, then makes progress during that account’s provider cooldown. |
 
 These checks use synthetic events and simulated provider acceptance. Live Instagram delivery requires an authorized provider integration and separate verification. The load timings describe the test host and scenario. [Provider integration](docs/integration.md)
@@ -76,9 +76,13 @@ These checks use synthetic events and simulated provider acceptance. Live Instag
 | Start with | Go deeper |
 | --- | --- |
 | [Requirements and acceptance](docs/requirements.md) | The pricing rules, edge cases, and tests that exercise them. |
-| [Architecture](docs/architecture.md) | [UML diagrams](docs/diagrams.md), [data model](docs/data.md), [module boundaries](docs/modularity.md), and [send recovery](docs/delivery-recovery.md). |
-| [Verification and release](docs/release.md) | [Measured workloads](docs/capacity.md) and [latest release](https://github.com/ByAxe/blotato-comment-automations/releases/latest). |
+| [Architecture](docs/architecture.md) | [UML diagrams](docs/diagrams.md), [data model](docs/data.md), [module boundaries](docs/architecture.md#boundaries-for-common-changes), and [send recovery](docs/delivery-recovery.md). |
+| [Capacity and operations](docs/capacity.md) | [Production sizing](docs/storage-and-sizing.md), [release procedure](docs/release.md), and [provider integration](docs/integration.md). |
+
+## Recorded evidence
+
+November 24, 2026 · [Local workload results and relation sizes](evidence/2026-11-24-postgres-workloads.md) · [Comparison with Blotato's documented product](evidence/2026-11-24-blotato-product-context.md)
 
 ## For contributors
 
-Run `make help` to see the available commands. The contributor guide maps common changes to the relevant skills and checks. A developer can keep personal preferences and a handoff in a local profile. [Contributor guide](AGENTS.md) · [Skills and evals](evals/README.md) · [Developer profiles](docs/developer-context.md)
+Run `make help` for project commands. The contributor guide covers checks, reusable skills, the optional design runner, and local developer profiles. [Contributor guide](contributing/README.md)

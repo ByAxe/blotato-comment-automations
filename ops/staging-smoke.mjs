@@ -23,7 +23,7 @@ const commentId = 'synthetic-comment';
 const controlToken = randomBytes(24).toString('hex');
 const adapterToken = randomBytes(24).toString('hex');
 const providerToken = randomBytes(24).toString('hex');
-const cwd = fileURLToPath(new URL('../', import.meta.url));
+const cwd = fileURLToPath(new URL('./', import.meta.url));
 const env = {
   ...process.env,
   STAGE_IMAGE: image,

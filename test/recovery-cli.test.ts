@@ -9,7 +9,7 @@ import { comment, db, input } from './fixtures.js';
 
 after(() => db.end());
 
-const entry = fileURLToPath(new URL('../scripts/reconcile.js', import.meta.url));
+const entry = fileURLToPath(new URL('../src/bin/reconcile.js', import.meta.url));
 
 function cli(expectedExit: number, ...args: string[]) {
   const result = spawnSync(process.execPath, [entry, ...args], { encoding: 'utf8', timeout: 10_000 });

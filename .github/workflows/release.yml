@@ -68,15 +68,7 @@ jobs:
           [[ "$pushed_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           test "$pushed_digest" = "$(registry_digest "$staging_tag")"
 
-          # A re-run after a partial promotion must reuse the previously staged digest.
-          by_version="$(registry_digest "$image:$GITHUB_REF_NAME")"
-          by_revision="$(registry_digest "$image:sha-$GITHUB_SHA")"
-          if [[ -n "$by_version" && -n "$by_revision" && "$by_version" != "$by_revision" ]]; then
-            echo "::error::Version and revision already refer to different images."
-            exit 1
-          fi
-          digest="${by_version:-${by_revision:-$pushed_digest}}"
-          printf 'image=%s\ndigest=%s\n' "$image" "$digest" >> "$GITHUB_OUTPUT"
+          printf 'image=%s\ndigest=%s\n' "$image" "$pushed_digest" >> "$GITHUB_OUTPUT"
 
   stage:
     name: Deploy and smoke test (${{ matrix.arch }})
@@ -108,7 +100,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
       - name: Exercise the published image in disposable staging
-        run: node scripts/staging-smoke.mjs "$PIN" "$GITHUB_SHA"
+        run: node ops/staging-smoke.mjs "$PIN" "$GITHUB_SHA"
       - name: Export and read back the verified platform image
         run: |
           assets="$RUNNER_TEMP/release-assets"
@@ -184,17 +176,7 @@ jobs:
           source .github/scripts/registry.sh
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
-          for ref in "$IMAGE:$GITHUB_REF_NAME" "$IMAGE:sha-$GITHUB_SHA"; do
-            existing="$(registry_digest "$ref")"
-            if [[ -n "$existing" && "$existing" != "$DIGEST" ]]; then
-              echo "::error::$ref already points to $existing."
-              exit 1
-            fi
-            if [[ -z "$existing" ]]; then
-              docker buildx imagetools create --prefer-index=false --tag "$ref" "$IMAGE@$DIGEST"
-            fi
-            test "$(registry_digest "$ref")" = "$DIGEST"
-          done
+          registry_promote "$IMAGE" "$DIGEST" "$IMAGE:$GITHUB_REF_NAME" "$IMAGE:sha-$GITHUB_SHA"
       - name: Publish or confirm the GitHub release and public archives
         env:
           GH_TOKEN: ${{ github.token }}
