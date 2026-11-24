@@ -1,0 +1,33 @@
+@startuml
+!pragma layout smetana
+hide empty description
+skinparam BackgroundColor #F8FAFC
+skinparam DefaultFontName SansSerif
+skinparam DefaultFontColor #17314A
+skinparam DefaultFontSize 15
+skinparam Shadowing false
+skinparam ArrowColor #475569
+skinparam StateBackgroundColor #E6F0F7
+skinparam StateBorderColor #456C87
+skinparam StateStartColor #334155
+skinparam StateEndColor #334155
+skinparam StateFontStyle bold
+skinparam nodesep 22
+skinparam ranksep 37
+
+state pending
+state leased
+state uncertain #FDF1D5
+state sent #DDF3EA
+state failed #F9E6E6
+[*] --> pending : / enqueue action
+pending --> leased : Claim [eligible]\n/ record lease and attempt
+leased --> pending : Known unsent\n[retry allowed]
+leased --> uncertain : Unknown outcome\nor lease expiry
+leased --> sent : Valid acceptance receipt
+leased --> failed : Known unsent [terminal]
+uncertain --> sent : Confirmed sent
+uncertain --> pending : Confirmed absent\n[before cutoff]
+uncertain --> failed : Abandon or late\nconfirmed absence
+pending --> failed : Send cutoff\nreached
+@enduml

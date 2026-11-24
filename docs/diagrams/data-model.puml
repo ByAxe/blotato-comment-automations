@@ -1,0 +1,84 @@
+@startuml
+!pragma layout smetana
+hide circle
+hide empty members
+skinparam BackgroundColor #F8FAFC
+skinparam DefaultFontName SansSerif
+skinparam DefaultFontColor #17314A
+skinparam DefaultFontSize 15
+skinparam Shadowing false
+skinparam ArrowColor #475569
+skinparam ArrowFontColor #334155
+skinparam ArrowFontSize 13
+skinparam ClassBackgroundColor #E6F0F7
+skinparam ClassBorderColor #456C87
+skinparam ClassAttributeFontSize 13
+skinparam nodesep 35
+skinparam ranksep 54
+
+class automations {
+  tenant_id : text
+  account_id : text
+  enabled : boolean
+}
+
+class automation_versions {
+  id : uuid {id}
+  revision : integer
+  link_url : text
+}
+
+class inbox {
+  tenant_id : text
+  account_id : text
+  event_id : text
+  kind : text
+  object_id : text
+}
+
+class runs {
+  id : uuid {id}
+  participant_id : text
+  comment_id : text
+  state : text
+  started_at : timestamptz
+}
+
+class buffered_emails {
+  run_id : uuid {id}
+  email : text
+}
+
+class leads {
+  run_id : uuid {id}
+  email : text
+}
+
+class outbox {
+  id : uuid {id}
+  kind : text
+  status : text
+  send_before : timestamptz
+  attempts : integer
+}
+
+class delivery_cooldowns {
+  until_at : timestamptz
+}
+
+class delivery_reconciliations {
+  action_id : uuid
+  attempt : integer
+  decision : text
+}
+
+inbox -[hidden]right- automations
+automations "1" -down- "0..*" automation_versions : published versions
+automations "0..1" -down- "0..1" automation_versions : current version
+automations "1" -right- "0..1" delivery_cooldowns : cooldown
+automation_versions "1" -down- "0..*" runs : pinned version
+runs "1" -left- "0..1" buffered_emails : buffered address
+runs "1" -right- "0..1" leads : captured address
+runs "1" -down- "0..3" outbox : requested actions
+outbox "1" -down- "0..*" delivery_reconciliations : decisions
+@enduml

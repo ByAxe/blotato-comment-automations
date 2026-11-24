@@ -1,0 +1,37 @@
+@startuml
+!pragma layout smetana
+hide empty description
+skinparam BackgroundColor #F8FAFC
+skinparam DefaultFontName SansSerif
+skinparam DefaultFontColor #17314A
+skinparam DefaultFontSize 15
+skinparam Shadowing false
+skinparam ArrowColor #475569
+skinparam StateBackgroundColor #E6F0F7
+skinparam StateBorderColor #456C87
+skinparam StateStartColor #334155
+skinparam StateEndColor #334155
+skinparam StateFontStyle bold
+skinparam nodesep 38
+skinparam ranksep 43
+
+state "Active run" as active #F8FAFC {
+  state "reply_pending" as reply
+  state "prompt_pending" as prompt
+  state "waiting" as wait
+  state "link_pending" as link
+  [*] --> reply
+  reply --> prompt : Public reply accepted\n/ enqueue prompt
+  prompt --> wait : Prompt accepted\n[no buffered email]
+  prompt --> link : Prompt accepted\n[buffered email]\n/ capture and enqueue link
+  wait --> link : Qualifying DM\n/ capture and enqueue link
+}
+state completed #DDF3EA
+state expired #EEF2F6
+state failed #F9E6E6
+[*] --> active : / pin version and enqueue reply
+link --> completed : Link accepted
+wait --> expired : Reply wait elapsed
+active --> expired : Send cutoff reached\n[known unsent]
+active --> failed : Delivery ends in failure
+@enduml

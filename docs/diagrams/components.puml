@@ -1,0 +1,44 @@
+@startuml
+!pragma layout smetana
+skinparam componentStyle uml2
+skinparam BackgroundColor #F8FAFC
+skinparam DefaultFontName SansSerif
+skinparam DefaultFontColor #17314A
+skinparam DefaultFontSize 15
+skinparam Shadowing false
+skinparam nodesep 20
+skinparam ranksep 38
+skinparam ArrowColor #475569
+skinparam ArrowFontColor #334155
+skinparam ArrowFontSize 13
+skinparam ActorBorderColor #334155
+skinparam ActorBackgroundColor #E2E8F0
+skinparam ComponentBorderColor #456C87
+skinparam ComponentBackgroundColor #E6F0F7
+skinparam PackageBorderColor #456C87
+skinparam PackageBackgroundColor #F8FAFC
+
+actor Customer as customer
+actor Operator as operator
+component "**Social connector**\nExisting integration" as integration #EEF2F6
+
+package "Comment automations" {
+  component "**HTTP API**\nNode.js" as api
+  component "**Delivery worker**\nNode.js" as worker
+  component "**Recovery CLI**\nNode.js" as cli
+  component "**Workflow store**\nPostgreSQL 17" as db
+}
+
+customer .down.> api : Publish, enable, status\nHTTP / control bearer
+operator .down.> cli : List and resolve\nOperator shell
+integration .down.> api : Submit events\nHTTP / adapter bearer
+api .down.> db : Read and write workflow\nSQL
+cli .down.> db : Reconcile attempts\nSQL / operator login
+worker .down.> db : Claim and settle\nSQL
+worker .up.> integration : Request sends\nHTTP / provider bearer
+
+customer -[hidden]right-> integration
+integration -[hidden]right-> operator
+api -[hidden]right-> worker
+worker -[hidden]right-> cli
+@enduml

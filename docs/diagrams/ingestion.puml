@@ -1,0 +1,54 @@
+@startuml
+hide footbox
+skinparam BackgroundColor #F8FAFC
+skinparam DefaultFontName SansSerif
+skinparam DefaultFontColor #17314A
+skinparam DefaultFontSize 15
+skinparam Shadowing false
+skinparam ArrowColor #475569
+skinparam SequenceLifeLineBorderColor #94A3B8
+skinparam SequenceParticipantBackgroundColor #E6F0F7
+skinparam SequenceParticipantBorderColor #456C87
+skinparam SequenceGroupBackgroundColor #EEF2F6
+skinparam SequenceGroupBorderColor #94A3B8
+<style>
+participant {
+  Padding 12
+}
+</style>
+skinparam BoxPadding 12
+skinparam maxMessageSize 260
+
+participant "Social connector" as gateway
+participant "HTTP API" as api
+participant "PostgreSQL" as db
+
+gateway -> api : POST adapter/events
+api -> api : Authorize adapter and tenant\nValidate account and event
+alt Valid self-authored event
+  api -->> gateway : ignored
+else Valid external event
+  api -> db : Begin transaction\nLock conversation
+  api -> db : Insert inbox receipt
+  db -->> api : Receipt time or duplicate
+  alt New receipt, event time ≤ receipt time
+    api -> db : Lock active run if present
+    opt Waiting run is due
+      api -> db : Expire the run
+    end
+    alt Matching comment, no active run
+      api -> db : Pin version, create run\nand enqueue public reply
+    else Matching comment, active run
+      api -> api : Outcome busy with run ID
+    else Inbound message
+      api -> db : Evaluate reply window\nBuffer or capture valid email
+    else Comment does not match
+      api -> api : Outcome ignored
+    end
+  else Duplicate or future-dated event
+    api -> api : Outcome duplicate or ignored
+  end
+  api -> db : Commit
+  api -->> gateway : Committed outcome
+end
+@enduml

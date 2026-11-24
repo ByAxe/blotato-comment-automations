@@ -1,0 +1,52 @@
+@startuml
+hide footbox
+skinparam BackgroundColor #F8FAFC
+skinparam DefaultFontName SansSerif
+skinparam DefaultFontColor #17314A
+skinparam DefaultFontSize 15
+skinparam Shadowing false
+skinparam ArrowColor #475569
+skinparam SequenceLifeLineBorderColor #94A3B8
+skinparam SequenceParticipantBackgroundColor #E6F0F7
+skinparam SequenceParticipantBorderColor #456C87
+skinparam SequenceGroupBackgroundColor #EEF2F6
+skinparam SequenceGroupBorderColor #94A3B8
+<style>
+participant {
+  Padding 12
+}
+</style>
+skinparam BoxPadding 10
+skinparam maxMessageSize 175
+
+participant "HTTP API" as api
+participant "PostgreSQL" as db
+participant "Worker" as worker
+participant "Social connector" as gateway
+
+worker -> db : Claim public reply\nCommit
+worker -> gateway : Send public reply
+gateway -->> worker : Acceptance receipt
+worker -> db : Fence lease and settle\nEnqueue prompt\nCommit
+
+worker -> db : Claim prompt\nStart 24-hour wait\nCommit
+worker -> gateway : Send email prompt
+opt Early DM before prompt settlement
+  gateway -> api : POST inbound DM
+  api -> db : Buffer first valid email\nCommit
+  api -->> gateway : buffered
+end
+gateway -->> worker : Acceptance receipt
+worker -> db : Fence lease and settle\nCapture buffer or wait\nCommit
+
+opt No buffered email and the wait is open
+  gateway -> api : POST qualifying DM
+  api -> db : Capture email\nEnqueue final DM\nCommit
+  api -->> gateway : accepted
+end
+
+worker -> db : Claim link\nCommit
+worker -> gateway : Send pinned URL
+gateway -->> worker : Acceptance receipt
+worker -> db : Fence lease and settle\nComplete run\nCommit
+@enduml
